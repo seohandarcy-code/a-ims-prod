@@ -1,0 +1,121 @@
+:root {
+  --samsung-blue: #1428A0;
+  --blue-step-1: #BAE6FD;
+  --blue-step-2: #38BDF8;
+  --blue-step-3: #1428A0;
+  --executed-color: #1428A0;
+  --predicted-line-color: #BAE6FD;
+  --unexecuted-color: #E5E5E5;
+
+  /* 단계 색상 언어 (품의=블루/계약=퍼플/집행=그린). ECharts option은 CSS 변수를
+     읽지 못하므로 이 값들은 theme/stageColors.ts의 리터럴과 반드시 일치시킬 것. */
+  --stage-po-color: #1428A0;
+  --stage-contract-color: #7C3AED;
+  --stage-execution-color: #059669;
+  --stage-po-soft: #DBEAFE;
+  --stage-contract-soft: #EDE9FE;
+  --stage-execution-soft: #D1FAE5;
+
+  --page-bg: #F8FAFC;
+  --card-bg: #FFFFFF;
+  --text-main: #171717;
+  --text-muted: #525252;
+  --text-subtle: #A3A3A3;
+  --border-color: #E5E5E5;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+
+  --tone-good-border: rgba(20, 40, 160, 0.28);
+  --tone-warn-border: rgba(245, 158, 11, 0.45);
+  --tone-bad-border: #DC2626;
+  /* 품의(po)와 무관한 범용 UI 선택/활성 상태용 중립 강조색 (실험 적용, 2026-07-21). */
+  --neutral-strong: #171717;
+  --neutral-soft: #F5F5F5;
+
+  /* "선택됨 = 페이지 최대 대비 면" 의미 토큰 (2026-08-04, 조직 트리 필터 도입과 함께 신설).
+     option-btn.active/org-btn.active/OrgTree 파트 선택이 전부 이 토큰을 참조한다 —
+     다크(프레젠테이션) 테마에서 검정이 배경과 동화되지 않도록 반전시킬 지점을 한 곳으로 모아둔다. */
+  --select-fill: var(--neutral-strong);
+  --select-fill-text: #fff;
+
+  /* 조직 트리(팀/PJT/파트) 들여쓰기 · 그룹 레일. 텍스트만 들여쓰고 박스는 항상 full-width로
+     유지한다(선택 시 검정 사각형 폭이 레벨마다 달라지는 것을 방지). */
+  --tree-indent-2: 0.6rem;
+  --tree-indent-3: 1.35rem;
+  --tree-rail-color: var(--border-color);
+
+  --tone-po-border: #1428A0;
+  --tone-contract-border: #7C3AED;
+  --tone-execution-border: #059669;
+  --tone-total-border: #171717;
+
+  --card-radius: 1rem;
+  --section-gap: 1.1rem;
+}
+
+/* 다크(프레젠테이션 모드) 진한 색 오버라이드.
+   다음 라운드에서 프레젠테이션 모드(`/present`) 도입 시 실제로 <html data-theme="dark">를
+   부여하는 스위치 배선을 추가할 예정 — 현재는 값만 정의되어 있고 아무 곳에서도 적용되지 않는다.
+   theme/stageColors.ts의 STAGE_DARK 리터럴과 반드시 일치시킬 것. */
+:root[data-theme="dark"] {
+  --stage-po-color: #60A5FA;
+  --stage-contract-color: #A78BFA;
+  --stage-execution-color: #34D399;
+  /* 순검정 배경에서는 "채워진 검정=선택됨"이 배경과 동화되므로 반전시킨다. */
+  --select-fill: #FAFAFA;
+  --select-fill-text: #0A0A0A;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--text-main);
+  font-family: "Pretendard", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.small-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-subtle);
+  margin: 0 0 0.15rem;
+}
+
+.big-title {
+  font-size: 2.2rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.3rem;
+  color: var(--text-main);
+}
+
+.desc {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-subtle);
+  margin: 0;
+}
+
+.section-title {
+  font-size: 1.4rem;
+  font-weight: 750;
+  margin: 0.4rem 0;
+  color: var(--text-main);
+}
+
+.chart-subtitle {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0.1rem 0 0.5rem;
+  color: var(--text-main);
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--card-radius);
+  box-shadow: var(--shadow);
+  padding: 1rem;
+}

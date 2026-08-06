@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>InlineRatioBar mockup</title>
+<style>
+  :root {
+    --stage-po-color: #1428A0;
+    --page-bg: #F8FAFC;
+    --card-bg: #FFFFFF;
+    --text-main: #0F172A;
+    --text-muted: #64748B;
+    --text-outside: #334155;
+    --border-color: #E2E8F0;
+    --track-bg: #E2E8F0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2.5rem;
+    background: var(--page-bg);
+    font-family: "Pretendard", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--text-main);
+  }
+  h1 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin: 0 0 1rem;
+  }
+  .panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    padding: 1.3rem 1.4rem;
+    max-width: 620px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  }
+  .panel-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 1.1rem;
+  }
+  .ratio-row {
+    display: grid;
+    grid-template-columns: 110px 1fr 56px;
+    align-items: center;
+    gap: 0.9rem;
+    margin-bottom: 1.1rem;
+  }
+  .ratio-row:last-child { margin-bottom: 0; }
+  .ratio-org {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .ratio-track {
+    position: relative;
+    height: 1.6rem;
+    background: var(--track-bg);
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+  .ratio-fill {
+    height: 100%;
+    background: var(--stage-po-color);
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 0.5rem;
+  }
+  .ratio-fill span {
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  /* 좁은 채움 폴백: 채움 폭이 라벨보다 좁으면 라벨을 트랙 위(연회색 여백)에 진한 회색으로 */
+  .ratio-outside-label {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-outside);
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .ratio-total {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+  <h1>InlineRatioBar 목업 — 트랙(연회색) + 채움(완료 비율) + 라벨 오버레이 / 좁은 채움은 라벨을 바깥으로</h1>
+  <div class="panel">
+    <div class="panel-title">조직별 품의완료 건수</div>
+
+    <div class="ratio-row">
+      <div class="ratio-org">시스템_PJT</div>
+      <div class="ratio-track">
+        <div class="ratio-fill" style="width: 75%"><span>완료 9건</span></div>
+      </div>
+      <div class="ratio-total">12건</div>
+    </div>
+
+    <div class="ratio-row">
+      <div class="ratio-org">인프라DT_PJT</div>
+      <div class="ratio-track">
+        <div class="ratio-fill" style="width: 81.8%"><span>완료 9건</span></div>
+      </div>
+      <div class="ratio-total">11건</div>
+    </div>
+
+    <div class="ratio-row">
+      <div class="ratio-org">자동화_PJT</div>
+      <div class="ratio-track">
+        <div class="ratio-fill" style="width: 63.6%"><span>완료 7건</span></div>
+      </div>
+      <div class="ratio-total">11건</div>
+    </div>
+
+    <!-- 폴백 예시: 완료 비율이 낮아(14%) 채움 안에 흰 글씨가 안 들어감 → 라벨을 채움 바깥에 -->
+    <div class="ratio-row">
+      <div class="ratio-org">데이터_PJT</div>
+      <div class="ratio-track">
+        <div class="ratio-fill" style="width: 14%"></div>
+        <span class="ratio-outside-label" style="left: calc(14% + 8px)">완료 2건</span>
+      </div>
+      <div class="ratio-total">14건</div>
+    </div>
+  </div>
+</body>
+</html>
+</content>

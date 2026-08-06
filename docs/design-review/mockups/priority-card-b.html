@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>관리 우선순위 카드 — 안 B (토글 버튼 + 하단 상세)</title>
+<style>
+  :root {
+    --text-main: #171717;
+    --text-muted: #525252;
+    --text-subtle: #A3A3A3;
+    --border-color: #E5E5E5;
+    --neutral-strong: #171717;
+    --neutral-soft: #F5F5F5;
+    --page-bg: #F8FAFC;
+    --card-bg: #FFFFFF;
+    --stage-po: #1428A0;       --stage-po-soft: #DBEAFE;
+    --stage-contract: #7C3AED; --stage-contract-soft: #EDE9FE;
+    --stage-execution: #059669; --stage-execution-soft: #D1FAE5;
+    --card-radius: 1rem;
+    --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem;
+    background: var(--page-bg);
+    font-family: "Pretendard", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--text-main);
+  }
+  .panel { max-width: 580px; }
+  .panel-title { font-size: 1.15rem; font-weight: 750; margin: 0 0 0.15rem; letter-spacing: -0.02em; }
+  .panel-desc { font-size: 0.8rem; color: var(--text-muted); margin: 0 0 1rem; }
+
+  .card-scroll {
+    max-height: 560px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 0.6rem;
+    padding-right: 0.25rem;
+  }
+  .card-scroll::-webkit-scrollbar { width: 8px; }
+  .card-scroll::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 999px; }
+
+  .p-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+  }
+
+  .p-head {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.85rem 0.9rem 0.85rem 1rem;
+  }
+  .stage-badge {
+    padding: 0.2rem 0.6rem; border-radius: 0.45rem;
+    font-size: 0.74rem; font-weight: 700; white-space: nowrap; flex-shrink: 0;
+  }
+  .head-main { flex: 1; min-width: 0; }
+  .title-line { font-size: 0.95rem; font-weight: 700; letter-spacing: -0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta-line { font-size: 0.76rem; color: var(--text-muted); margin-top: 0.15rem; }
+  .meta-line .dot { color: var(--text-subtle); margin: 0 0.35rem; }
+  .no-chip { color: var(--text-subtle); font-variant-numeric: tabular-nums; }
+
+  /* 명시적 펼치기 토글 버튼 */
+  .toggle-btn {
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    border: 1px solid var(--border-color); background: var(--neutral-soft);
+    color: var(--text-muted); font-size: 0.74rem; font-weight: 650;
+    padding: 0.3rem 0.6rem; border-radius: 0.5rem; cursor: pointer;
+    font-family: inherit; transition: background .15s ease, color .15s ease;
+  }
+  .toggle-btn:hover { background: #ececec; color: var(--text-main); }
+  .toggle-btn .chevron { font-size: 0.62rem; transition: transform .18s ease; }
+  .p-card.open .toggle-btn { background: var(--neutral-strong); color: #fff; border-color: var(--neutral-strong); }
+  .p-card.open .toggle-btn .chevron { transform: rotate(180deg); }
+  .toggle-btn .label-close { display: none; }
+  .p-card.open .toggle-btn .label-open { display: none; }
+  .p-card.open .toggle-btn .label-close { display: inline; }
+
+  .s-po        { background: var(--stage-po-soft);        color: var(--stage-po); }
+  .s-contract  { background: var(--stage-contract-soft);  color: var(--stage-contract); }
+  .s-execution { background: var(--stage-execution-soft); color: var(--stage-execution); }
+
+  /* 하단 상세 섹션 */
+  .p-detail { display: none; padding: 0 1rem 0.95rem; }
+  .p-card.open .p-detail { display: block; }
+  .detail-inner {
+    background: var(--neutral-soft);
+    border: 1px solid var(--border-color);
+    border-radius: 0.7rem;
+    padding: 0.8rem 0.9rem;
+    display: grid; gap: 0.65rem;
+  }
+  .detail-block { display: grid; gap: 0.2rem; }
+  .detail-key {
+    font-size: 0.68rem; font-weight: 750; letter-spacing: 0.02em;
+    text-transform: uppercase; color: var(--text-subtle);
+    display: flex; align-items: center; gap: 0.35rem;
+  }
+  .detail-key::before { content: ''; width: 0.35rem; height: 0.35rem; border-radius: 999px; background: currentColor; }
+  .detail-val { font-size: 0.83rem; color: var(--text-main); line-height: 1.45; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <h1 class="panel-title">관리 우선순위</h1>
+    <p class="panel-desc">안 B · 헤더 우측의 [상세] 토글 버튼으로 펼침 — 펼치면 카드 하단에 진단내용/관리포인트 섹션이 나타납니다.</p>
+    <div class="card-scroll" id="scroll"></div>
+  </div>
+
+  <script>
+    const rows = [
+      { no: 12, org: '시스템_PJT',   owner: '김도윤', title: '차세대 관제 시스템 구축', stage: '품의 지연', cls: 's-po',        detail: '팀장심의예정 5월 경과 후 품의 미완료', action: '심의 의견/보완 필요사항 확인' },
+      { no: 27, org: '자동화_PJT',   owner: '이서준', title: '스마트 물류 자동화 라인', stage: '품의 지연', cls: 's-po',        detail: '팀장심의예정 4월 경과 후 품의 미완료', action: '센터장 심의 필요 여부 재확인' },
+      { no: 8,  org: '인프라DT_PJT', owner: '박지우', title: '데이터센터 냉각 효율화',   stage: '계약 대기', cls: 's-contract',  detail: '품의완료 후 계약등록 미완료 (2개월 경과)', action: '계약등록 예정월/구매 진행상태 확인' },
+      { no: 31, org: '시스템_PJT',   owner: '최민서', title: '통합 보안관제 고도화',     stage: '계약 대기', cls: 's-contract',  detail: '품의완료 후 계약등록 미완료', action: '구매팀 발주 일정 협의' },
+      { no: 15, org: '자동화_PJT',   owner: '정하윤', title: 'AGV 무인운반 도입',        stage: '집행 대기', cls: 's-execution', detail: '품의/계약 이후 기준월까지 집행금액 미발생', action: '기성단계·검수·세금계산서 처리 상태 확인' },
+      { no: 4,  org: '인프라DT_PJT', owner: '강도현', title: '네트워크 이중화 구축',     stage: '집행 대기', cls: 's-execution', detail: '계약 후 3개월 집행 미발생', action: '착수보고/선급금 지급 여부 점검' },
+      { no: 22, org: '시스템_PJT',   owner: '윤서아', title: 'ERP 정산모듈 고도화',      stage: '잔여 집행', cls: 's-execution', detail: '잔여 집행금액 4.2억', action: '잔여 기성단계와 월별 집행예측 점검' },
+    ];
+    const scroll = document.getElementById('scroll');
+    rows.forEach((r) => {
+      const card = document.createElement('div');
+      card.className = 'p-card';
+      card.innerHTML = `
+        <div class="p-head">
+          <span class="stage-badge ${r.cls}">${r.stage}</span>
+          <div class="head-main">
+            <div class="title-line">${r.title}</div>
+            <div class="meta-line">
+              <span class="no-chip">NO ${r.no}</span><span class="dot">·</span>${r.org}<span class="dot">·</span>${r.owner}
+            </div>
+          </div>
+          <button class="toggle-btn" type="button">
+            <span class="label-open">상세</span><span class="label-close">접기</span>
+            <span class="chevron">▼</span>
+          </button>
+        </div>
+        <div class="p-detail">
+          <div class="detail-inner">
+            <div class="detail-block"><div class="detail-key">진단내용</div><div class="detail-val">${r.detail}</div></div>
+            <div class="detail-block"><div class="detail-key">관리포인트</div><div class="detail-val">${r.action}</div></div>
+          </div>
+        </div>`;
+      card.querySelector('.toggle-btn').addEventListener('click', () => card.classList.toggle('open'));
+      scroll.appendChild(card);
+    });
+  </script>
+</body>
+</html>

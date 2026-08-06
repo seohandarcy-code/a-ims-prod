@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>Presentation mode mockup (dark)</title>
+<style>
+  :root {
+    /* 프레젠테이션 전용 다크 토큰 — 업무용 #1428A0/#059669는 검정에서 너무 어두워 밝기를 올린 별도 값 사용 */
+    --present-bg: #0B0B0F;
+    --present-text: #EDEDF0;
+    --present-muted: #9A9AA3;
+    --present-track: #26262B;
+    --present-axis: #3A3A42;
+    --present-blue: #5B8DEF;   /* 월별 집행금액 */
+    --present-green: #46B15D;  /* 누적 집행률 */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--present-bg);
+    color: var(--present-text);
+    /* 실제 구현 시엔 손글씨풍 디스플레이 웹폰트를 로드 권장(레퍼런스 감각). 여기선 굵은 시스템 폰트로 근사. */
+    font-family: "Pretendard", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .slide {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 3.5rem 3rem;
+    min-height: 100vh;
+    border-bottom: 1px solid var(--present-axis);
+  }
+
+  /* ── Slide 1: 라인 차트 (레퍼런스 이미지 2) ── */
+  .legend {
+    display: flex;
+    gap: 4rem;
+    margin-bottom: 2.5rem;
+  }
+  .legend-item { display: flex; gap: 1rem; align-items: flex-start; }
+  .legend-tick { width: 8px; border-radius: 4px; flex-shrink: 0; align-self: stretch; min-height: 3.4rem; }
+  .legend-tick.blue { background: var(--present-blue); }
+  .legend-tick.green { background: var(--present-green); }
+  .legend-name { font-size: 1.5rem; font-weight: 600; color: var(--present-text); line-height: 1.25; }
+  .legend-value { font-size: 2.6rem; font-weight: 800; color: var(--present-text); line-height: 1.1; }
+
+  .chart-wrap { width: 100%; }
+  svg { width: 100%; height: auto; display: block; }
+
+  /* ── Slide 2: 조직별 바보드 (레퍼런스 이미지 3) ── */
+  .board-title { font-size: 3rem; font-weight: 800; margin: 0 0 0.6rem; letter-spacing: -0.02em; }
+  .board-sub { font-size: 1.4rem; color: var(--present-muted); margin: 0 0 3rem; font-weight: 500; }
+  .board-row { margin-bottom: 2.6rem; }
+  .board-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.9rem;
+  }
+  .board-org { font-size: 2.4rem; font-weight: 700; }
+  .board-amount { font-size: 2.4rem; font-weight: 800; }
+  .board-track {
+    width: 100%;
+    height: 1.1rem;
+    background: var(--present-track);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .board-fill { height: 100%; background: var(--present-blue); border-radius: 999px; }
+</style>
+</head>
+<body>
+  <!-- Slide 1 : 월별 집행금액(블루) + 누적 집행률(그린) 스무딩 라인 -->
+  <section class="slide">
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-tick blue"></div>
+        <div>
+          <div class="legend-name">월별 집행금액</div>
+          <div class="legend-value">8 억</div>
+        </div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-tick green"></div>
+        <div>
+          <div class="legend-name">누적 집행률</div>
+          <div class="legend-value">42.5 %</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-wrap">
+      <!--
+        viewBox 1000x520. 축선 x=70, baseline y=460, 월 1~11 → x=70..950.
+        주의: SVG presentation attribute에는 CSS var()가 해석되지 않으므로 색은 hex로 고정.
+        실제 구현(ECharts)에서는 series 색을 --present-blue/--present-green 토큰과 동일 값으로 지정.
+      -->
+      <svg viewBox="0 0 1000 520" role="img" aria-label="월별 집행금액과 누적 집행률 라인 차트">
+        <!-- y축 -->
+        <line x1="70" y1="100" x2="70" y2="460" stroke="#3A3A42" stroke-width="2" />
+
+        <!-- 누적 집행률 (그린, S커브 상승) -->
+        <polyline
+          fill="none" stroke="#46B15D" stroke-width="6"
+          stroke-linecap="round" stroke-linejoin="round"
+          points="70,430.4 158,420.8 246,401.6 334,369.6 422,324.8 510,273.6 598,228.8 686,193.6 774,168 862,148.8 950,136" />
+        <!-- 월별 집행금액 (블루, 상승 후 하강) -->
+        <polyline
+          fill="none" stroke="#5B8DEF" stroke-width="6"
+          stroke-linecap="round" stroke-linejoin="round"
+          points="70,414.4 158,401.6 246,382.4 334,363.2 422,344 510,331.2 598,344 686,363.2 774,382.4 862,398.4 950,411.2" />
+
+        <!-- 시작점 원형 마커 -->
+        <circle cx="70" cy="430.4" r="11" fill="#46B15D" stroke="#0B0B0F" stroke-width="3" />
+        <circle cx="70" cy="414.4" r="11" fill="#5B8DEF" stroke="#0B0B0F" stroke-width="3" />
+
+        <!-- 축 라벨 (최소) -->
+        <text x="70"  y="498" fill="#EDEDF0" font-size="30" font-weight="700" text-anchor="start">1월</text>
+        <text x="510" y="498" fill="#9A9AA3" font-size="26" font-weight="500" text-anchor="middle">month</text>
+        <text x="950" y="498" fill="#9A9AA3" font-size="26" font-weight="500" text-anchor="end">11월</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- Slide 2 : 조직별 집행금액 바보드 -->
+  <section class="slide">
+    <h1 class="board-title">조직별 집행금액</h1>
+    <p class="board-sub">조직별 누적 집행금액을 비교하는 예시입니다.</p>
+
+    <div class="board-row">
+      <div class="board-row-head">
+        <span class="board-org">시스템_PJT</span>
+        <span class="board-amount">86 억</span>
+      </div>
+      <div class="board-track"><div class="board-fill" style="width: 100%"></div></div>
+    </div>
+
+    <div class="board-row">
+      <div class="board-row-head">
+        <span class="board-org">인프라DT_PJT</span>
+        <span class="board-amount">64 억</span>
+      </div>
+      <div class="board-track"><div class="board-fill" style="width: 74.4%"></div></div>
+    </div>
+
+    <div class="board-row">
+      <div class="board-row-head">
+        <span class="board-org">자동화_PJT</span>
+        <span class="board-amount">42 억</span>
+      </div>
+      <div class="board-track"><div class="board-fill" style="width: 48.8%"></div></div>
+    </div>
+  </section>
+</body>
+</html>
+</content>

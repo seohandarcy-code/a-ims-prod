@@ -1,0 +1,25 @@
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/data/current/
+backend/data/edits/
+backend/data/data_rev/
+backend/.env
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+nginx/logs/
+nginx/temp/
+legacy/.venv/
+legacy/__pycache__/
+legacy/**/__pycache__/
+.claude/settings.local.json
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# 작업 중 생기는 디버그 로그/화면 캡처 - 디스크에는 남기되 git 추적 대상에서는 제외
+legacy/*.log
+화면 캡처 *.png
+스크린샷_*.jpeg

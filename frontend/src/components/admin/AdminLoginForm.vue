@@ -1,0 +1,99 @@
+<template>
+  <form
+    class="admin-form"
+    @submit.prevent="handleSubmit"
+  >
+    <label class="admin-field">
+      <span>아이디</span>
+      <input
+        v-model="username"
+        type="text"
+        autocomplete="username"
+      >
+    </label>
+
+    <label class="admin-field">
+      <span>비밀번호</span>
+      <input
+        v-model="password"
+        type="password"
+        autocomplete="current-password"
+      >
+    </label>
+
+    <p
+      v-if="authError"
+      class="admin-error"
+    >
+      {{ authError }}
+    </p>
+
+    <button
+      type="submit"
+      class="admin-submit"
+      :disabled="authLoading"
+    >
+      {{ authLoading ? '로그인 중...' : '로그인' }}
+    </button>
+  </form>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useAdminAuth } from '../../composables/useAdminAuth'
+
+const { login, authLoading, authError } = useAdminAuth()
+
+const username = ref('admin')
+const password = ref('')
+
+async function handleSubmit(): Promise<void> {
+  await login(username.value, password.value)
+}
+</script>
+
+<style scoped>
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-width: 320px;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.admin-field input {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.admin-error {
+  font-size: 0.8rem;
+  color: var(--tone-bad-border);
+  margin: 0;
+}
+
+.admin-submit {
+  padding: 0.55rem 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: var(--neutral-strong);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+</style>
