@@ -124,7 +124,7 @@ function clampPct(value: unknown): number {
   font-weight: 800;
   text-align: center;
   padding: 0.45rem 0.6rem 0.5rem;
-  border-bottom: 2px solid var(--neutral-strong);
+  border-bottom: 2px solid var(--neutral-fill);
 }
 
 .simple-table td {
@@ -148,14 +148,14 @@ function clampPct(value: unknown): number {
 .progress-track {
   flex: 1;
   height: 0.5rem;
-  background: var(--unexecuted-color);
+  background: var(--stage-execution-wash);
   border-radius: 0.3rem;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: var(--samsung-blue);
+  background: var(--stage-execution-ink);
 }
 
 .empty {

@@ -42,7 +42,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ select: [month: number] }>()
 
-const EMPHASIS_COLOR = '#171717'
+const EMPHASIS_COLOR = '#595870'
 
 const hasBar = computed(() => !!props.barName && !!props.barData && props.barData.length > 0)
 
@@ -106,13 +106,13 @@ const option = computed<EChartsOption>(() => ({
               value: v,
               itemStyle:
                 monthFromLabel(props.categories[i] ?? '') === props.selectedMonth
-                  ? { color: props.barColor ?? '#E5E5E5', borderColor: EMPHASIS_COLOR, borderWidth: 2 }
-                  : { color: props.barColor ?? '#E5E5E5' },
+                  ? { color: props.barColor ?? '#E7E6EE', borderColor: EMPHASIS_COLOR, borderWidth: 2 }
+                  : { color: props.barColor ?? '#E7E6EE' },
             })),
             label: {
               show: true,
               position: 'insideTop' as const,
-              color: props.barLabelColor ?? '#525252',
+              color: props.barLabelColor ?? '#5C596E',
               formatter: barLabel,
             },
           },

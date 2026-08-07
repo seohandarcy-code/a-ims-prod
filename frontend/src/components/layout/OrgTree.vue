@@ -209,9 +209,9 @@ function toggleExpand(pjt: OrgTreeNode, event: Event): void {
 }
 
 .tree-team.active {
-  background: var(--select-fill);
-  border-color: var(--select-fill);
-  color: var(--select-fill-text);
+  background: var(--org-select-fill);
+  border-color: var(--org-select-fill);
+  color: var(--org-select-fill-text);
 }
 
 .tree-pjt {
@@ -232,13 +232,13 @@ function toggleExpand(pjt: OrgTreeNode, event: Event): void {
   height: var(--rail-height, 0%);
   width: 3px;
   border-radius: 999px;
-  background: var(--select-fill);
+  background: var(--org-select-fill);
 }
 
 .tree-pjt.active {
-  background: var(--select-fill);
-  border-color: var(--select-fill);
-  color: var(--select-fill-text);
+  background: var(--org-select-fill);
+  border-color: var(--org-select-fill);
+  color: var(--org-select-fill-text);
 }
 
 .pjt-right {
@@ -285,9 +285,9 @@ function toggleExpand(pjt: OrgTreeNode, event: Event): void {
 }
 
 .tree-part.active {
-  background: var(--select-fill);
-  border-color: var(--select-fill);
-  color: var(--select-fill-text);
+  background: var(--org-select-fill);
+  border-color: var(--org-select-fill);
+  color: var(--org-select-fill-text);
   font-weight: 700;
 }
 

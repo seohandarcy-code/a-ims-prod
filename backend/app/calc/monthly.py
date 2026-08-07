@@ -66,8 +66,15 @@ def monthly_progress_table(df: pd.DataFrame, current_month: int | None = None) -
     # 종합현황 "계약 집행" 카드와 동일하게 실행품의금액을 분모로 쓴다.
     base_amount = df[COL["execution_po_amount"]].sum()
 
-    monthly["누적집행률"] = np.where(base_amount > 0, monthly["누적기성금액"] / base_amount * 100, 0)
-    monthly["예측누적집행률"] = np.where(base_amount > 0, monthly["누적기성금액_예측"] / base_amount * 100, 0)
+    # np.where는 인자를 모두 즉시 평가하므로 base_amount==0(정수 dtype)일 때 분기 밖에서도
+    # ZeroDivisionError가 발생한다(예: 실행품의금액이 아직 0인 조직/파트 drill-down) — 나눗셈
+    # 자체를 조건 안으로 옮겨 회피한다.
+    if base_amount > 0:
+        monthly["누적집행률"] = monthly["누적기성금액"] / base_amount * 100
+        monthly["예측누적집행률"] = monthly["누적기성금액_예측"] / base_amount * 100
+    else:
+        monthly["누적집행률"] = 0.0
+        monthly["예측누적집행률"] = 0.0
 
     monthly.loc[monthly["월"] > actual_max_month, "누적집행률"] = np.nan
     monthly["월표시"] = monthly["월"].map(lambda x: f"{x}월")

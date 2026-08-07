@@ -55,7 +55,7 @@ export interface MiniKpiCard {
   secondaryLabel?: string
   caption?: string
   tooltip?: string
-  tone?: 'normal' | 'good' | 'warn' | 'bad' | 'po' | 'contract' | 'execution' | 'total'
+  tone?: 'normal' | 'good' | 'warn' | 'bad' | 'po' | 'contract' | 'execution' | 'total' | 'total-light'
   /** 건수형 카드의 값 숫자를 더 크게 강조해서 보여준다 (%/비율 카드는 적용하지 않음). */
   emphasizeValue?: boolean
 }
@@ -103,7 +103,8 @@ function secondaryText(value: string | KpiValue): string {
 .tone-po,
 .tone-contract,
 .tone-execution,
-.tone-total {
+.tone-total,
+.tone-total-light {
   border-color: var(--border-color);
   padding-left: 1.25rem;
 }
@@ -115,6 +116,7 @@ function secondaryText(value: string | KpiValue): string {
 .tone-contract { border-left: 8px solid var(--tone-contract-border); }
 .tone-execution { border-left: 8px solid var(--tone-execution-border); }
 .tone-total { border-left: 8px solid var(--tone-total-border); }
+.tone-total-light { border-left: 8px solid var(--tone-total-light-border); }
 
 .kpi-card.dense {
   min-height: 5.2rem;
@@ -127,7 +129,8 @@ function secondaryText(value: string | KpiValue): string {
 .kpi-card.dense.tone-po,
 .kpi-card.dense.tone-contract,
 .kpi-card.dense.tone-execution,
-.kpi-card.dense.tone-total {
+.kpi-card.dense.tone-total,
+.kpi-card.dense.tone-total-light {
   padding-left: 1.15rem;
 }
 
@@ -193,7 +196,8 @@ function secondaryText(value: string | KpiValue): string {
 .tone-po.has-foot .kpi-foot,
 .tone-contract.has-foot .kpi-foot,
 .tone-execution.has-foot .kpi-foot,
-.tone-total.has-foot .kpi-foot {
+.tone-total.has-foot .kpi-foot,
+.tone-total-light.has-foot .kpi-foot {
   margin-left: -1.25rem;
 }
 

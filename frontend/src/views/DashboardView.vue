@@ -150,7 +150,7 @@ const kpiCards = computed<MiniKpiCard[]>(() => {
         unit: '억',
       },
       caption: '계획 + 계획외',
-      tone: 'total',
+      tone: 'total-light',
       emphasizeValue: true,
     },
     {
@@ -203,7 +203,7 @@ const kpiCards = computed<MiniKpiCard[]>(() => {
 const monthLabels = computed(() => data.value?.monthly_flow.map((m) => String(m['월표시'])) ?? [])
 
 // 전체 투자계획 금액(계획+계획외+Drop) 기준선 — 상단 KPI "전체 투자계획" 카드와 동일한 값.
-const NEUTRAL_BLACK = '#171717'
+const NEUTRAL_LINE = '#595870'
 
 const monthlyLines = computed<ComboLineSeries[]>(() => {
   if (!data.value) return []
@@ -213,6 +213,7 @@ const monthlyLines = computed<ComboLineSeries[]>(() => {
       name: '누적 심의금액',
       data: data.value.monthly_flow.map((m) => (m['누적심의금액_억원'] === null ? null : Number(m['누적심의금액_억원']))),
       color: STAGE.po,
+      lineType: 'solid',
       labelFormatter: (v) => `${v.toFixed(1)}억`,
       labelPosition: 'top',
     },
@@ -220,6 +221,7 @@ const monthlyLines = computed<ComboLineSeries[]>(() => {
       name: '누적 계약금액',
       data: data.value.monthly_flow.map((m) => (m['누적계약금액_억원'] === null ? null : Number(m['누적계약금액_억원']))),
       color: STAGE.contract,
+      lineType: 'dashed',
       labelFormatter: (v) => `${v.toFixed(1)}억`,
       labelPosition: 'top',
     },
@@ -227,13 +229,14 @@ const monthlyLines = computed<ComboLineSeries[]>(() => {
       name: '누적 집행금액',
       data: data.value.monthly_flow.map((m) => (m['누적기성금액_억원'] === null ? null : Number(m['누적기성금액_억원']))),
       color: STAGE.execution,
+      lineType: 'dotted',
       labelFormatter: (v) => `${v.toFixed(1)}억`,
       labelPosition: 'bottom',
     },
     {
       name: '전체 투자계획 금액',
       data: monthLabels.value.map(() => totalPlanEok),
-      color: NEUTRAL_BLACK,
+      color: NEUTRAL_LINE,
       lineType: 'dotted',
       labelFormatter: (v) => `${v.toFixed(1)}억`,
       labelPosition: 'right',

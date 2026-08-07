@@ -273,8 +273,8 @@ function handleSave(): void {
 
 .edit-save {
   border: none;
-  background: var(--neutral-strong);
-  color: #fff;
+  background: var(--select-fill);
+  color: var(--select-fill-text);
 }
 
 .edit-save:disabled {

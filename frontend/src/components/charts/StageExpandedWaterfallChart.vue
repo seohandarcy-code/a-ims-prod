@@ -39,7 +39,7 @@
               :class="{ muted: isTrailing(itemIdx, slot) }"
               :style="{ bottom: barTop(slot, itemIdx) + 6 + 'px' }"
             >
-              {{ isTrailing(itemIdx, slot) ? '-' : '' }}{{ item.count.toLocaleString() }}
+              {{ isTrailing(itemIdx, slot) && item.count > 0 ? '-' : '' }}{{ item.count.toLocaleString() }}
             </div>
           </div>
         </div>
@@ -140,14 +140,18 @@ const slotExtraGap = computed<number[]>(() => {
   })
 })
 
-// group별 대표색 — 계획=검정, 심의=파랑, 계약=보라, 정산=초록. 이탈/미도달 항목만 회색.
+// group별 대표색 — 계획=중립, 심의=파랑, 계약=보라, 정산=초록. 이탈/미도달 항목만 회색.
 const GROUP_COLORS: Record<ProgressFunnelItem['group'], string> = {
-  plan: '#171717',
+  plan: 'var(--neutral-fill)',
   review: STAGE.po,
   contract: STAGE.contract,
   settle: STAGE.execution,
 }
-const GRAY = '#CBD5E1'
+const GRAY = '#DFDEE7'
+// "전체 투자계획"(neutral-fill)보다 살짝 옅은 톤 — 계획/계획외/진행 투자계획만 이 톤을 쓴다
+// (2026-08-07 오너 요청, Drop·전체 투자계획은 neutral-fill 그대로 유지).
+const NEUTRAL_FILL_LIGHT = 'var(--neutral-fill-light)'
+const LIGHT_PLAN_KEYS = new Set(['plan', 'plan_out', 'progress'])
 
 function isTrailing(itemIdx: number, slot: Slot): boolean {
   // 클러스터의 마지막 항목 = 다음 체크포인트로 이어지지 않는 탈락분이므로 항상 회색 처리.
@@ -156,6 +160,7 @@ function isTrailing(itemIdx: number, slot: Slot): boolean {
 
 function barColor(item: ProgressFunnelItem, itemIdx: number, slot: Slot): string {
   if (isTrailing(itemIdx, slot)) return GRAY
+  if (LIGHT_PLAN_KEYS.has(item.key)) return NEUTRAL_FILL_LIGHT
   return GROUP_COLORS[item.group]
 }
 

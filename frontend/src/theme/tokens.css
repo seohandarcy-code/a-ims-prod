@@ -1,41 +1,66 @@
 :root {
-  --samsung-blue: #1428A0;
-  --blue-step-1: #BAE6FD;
-  --blue-step-2: #38BDF8;
-  --blue-step-3: #1428A0;
-  --executed-color: #1428A0;
-  --predicted-line-color: #BAE6FD;
   --unexecuted-color: #E5E5E5;
 
-  /* 단계 색상 언어 (품의=블루/계약=퍼플/집행=그린). ECharts option은 CSS 변수를
-     읽지 못하므로 이 값들은 theme/stageColors.ts의 리터럴과 반드시 일치시킬 것. */
-  --stage-po-color: #1428A0;
-  --stage-contract-color: #7C3AED;
-  --stage-execution-color: #059669;
-  --stage-po-soft: #DBEAFE;
-  --stage-contract-soft: #EDE9FE;
-  --stage-execution-soft: #D1FAE5;
+  /* 단계 색상 언어 (심의=블루/계약=퍼플/집행=그린) — 3단 티어.
+     ink(대비용: 텍스트/라인/라벨, 흰 글씨를 얹는 배경 — 흰 배경 대비 4.5:1 이상 고정) /
+     fill(장식용: 8px 카드 스트립, 퍼널·차트 막대 — 3:1 이상) /
+     wash(넓은 면용: 차트 채우기, 트랙, 배지 배경).
+     ECharts option은 CSS 변수를 못 읽으므로 이 값들은 theme/stageColors.ts의 리터럴과
+     반드시 일치시킬 것. 파스텔 톤 전환(2026-08-07) — 근거는
+     docs/design-review/2026-08-07-pastel-palette-review.md 참고. */
+  --stage-po-ink: #3B5BC0;
+  --stage-po-fill: #7189DC;
+  --stage-po-wash: #E6EAFA;
+  --stage-contract-ink: #7A5BC4;
+  --stage-contract-fill: #9E80DB;
+  --stage-contract-wash: #EFEAFB;
+  --stage-execution-ink: #1E8264;
+  --stage-execution-fill: #3DA07E;
+  --stage-execution-wash: #DCF0E8;
 
-  --page-bg: #F8FAFC;
+  /* 하위호환 별칭 — 기존 참조처(-color/-soft)는 그대로 두고 값만 새 티어를 가리키게 한다. */
+  --stage-po-color: var(--stage-po-ink);
+  --stage-contract-color: var(--stage-contract-ink);
+  --stage-execution-color: var(--stage-execution-ink);
+  --stage-po-soft: var(--stage-po-wash);
+  --stage-contract-soft: var(--stage-contract-wash);
+  --stage-execution-soft: var(--stage-execution-wash);
+
+  --page-bg: #F7F6FB;
   --card-bg: #FFFFFF;
-  --text-main: #171717;
-  --text-muted: #525252;
-  --text-subtle: #A3A3A3;
-  --border-color: #E5E5E5;
+  --text-main: #252434;
+  --text-muted: #5C596E;
+  --text-subtle: #6C6980;
+  --border-color: #E7E6EE;
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 
-  --tone-good-border: rgba(20, 40, 160, 0.28);
-  --tone-warn-border: rgba(245, 158, 11, 0.45);
-  --tone-bad-border: #DC2626;
-  /* 품의(po)와 무관한 범용 UI 선택/활성 상태용 중립 강조색 (실험 적용, 2026-07-21). */
-  --neutral-strong: #171717;
-  --neutral-soft: #F5F5F5;
+  --tone-good-border: var(--stage-execution-fill);
+  --tone-warn-border: #C68A2E;
+  --tone-bad-border: #C24A4A;
+
+  /* 중립 4단 — 인디고 차콜 계열(hue가 심의 블루·계약 퍼플의 중간점)로 통일해 팔레트 안에
+     "소속"되면서도 특정 단계로 오독되지 않게 한다. strong은 명도·대비를 낮추지 않는다
+     (선택 상태가 유일한 최대-대비 앵커로 남아야 위계가 유지됨 — 파스텔화는 hue만 적용). */
+  --neutral-strong: #2D2C3D;
+  --neutral-line: #595870;
+  --neutral-fill: #8D8EA4;
+  --neutral-soft: #F3F2F7;
+  /* neutral-fill보다 살짝 옅은 톤(2026-08-07 추가) — "전체 투자계획"(neutral-fill)과 구분되는
+     "계획/계획외/진행 투자계획" 대표색. 텍스트 대비 요구가 없는 넓은 면(퍼널 막대, 카드 스트립)에만 쓴다. */
+  --neutral-fill-light: #B9BBC8;
 
   /* "선택됨 = 페이지 최대 대비 면" 의미 토큰 (2026-08-04, 조직 트리 필터 도입과 함께 신설).
-     option-btn.active/org-btn.active/OrgTree 파트 선택이 전부 이 토큰을 참조한다 —
+     option-btn.active/filter-badge/관리자 버튼류가 전부 이 토큰을 참조한다 —
      다크(프레젠테이션) 테마에서 검정이 배경과 동화되지 않도록 반전시킬 지점을 한 곳으로 모아둔다. */
   --select-fill: var(--neutral-strong);
   --select-fill-text: #fff;
+
+  /* 조직구분 필터(OrgTree) 선택 색 — "전체 투자계획"과 동일한 neutral-fill을 쓴다(2026-08-07
+     오너 요청). 글자색은 흰색으로 지정(2026-08-07 재요청, 짙은 text-main 조합이 눈에 거슬린다는
+     피드백) — neutral-fill 배경 대비 3.2:1로 WCAG AA 텍스트 기준(4.5:1)에는 못 미치지만,
+     굵은 글씨 + 짧은 라벨이라는 사용 맥락을 감안해 오너가 명시적으로 선택한 값이다. */
+  --org-select-fill: var(--neutral-fill);
+  --org-select-fill-text: #fff;
 
   /* 조직 트리(팀/PJT/파트) 들여쓰기 · 그룹 레일. 텍스트만 들여쓰고 박스는 항상 full-width로
      유지한다(선택 시 검정 사각형 폭이 레벨마다 달라지는 것을 방지). */
@@ -43,10 +68,11 @@
   --tree-indent-3: 1.35rem;
   --tree-rail-color: var(--border-color);
 
-  --tone-po-border: #1428A0;
-  --tone-contract-border: #7C3AED;
-  --tone-execution-border: #059669;
-  --tone-total-border: #171717;
+  --tone-po-border: var(--stage-po-fill);
+  --tone-contract-border: var(--stage-contract-fill);
+  --tone-execution-border: var(--stage-execution-fill);
+  --tone-total-border: var(--neutral-fill);
+  --tone-total-light-border: var(--neutral-fill-light);
 
   --card-radius: 1rem;
   --section-gap: 1.1rem;
@@ -55,7 +81,9 @@
 /* 다크(프레젠테이션 모드) 진한 색 오버라이드.
    다음 라운드에서 프레젠테이션 모드(`/present`) 도입 시 실제로 <html data-theme="dark">를
    부여하는 스위치 배선을 추가할 예정 — 현재는 값만 정의되어 있고 아무 곳에서도 적용되지 않는다.
-   theme/stageColors.ts의 STAGE_DARK 리터럴과 반드시 일치시킬 것. */
+   theme/stageColors.ts의 STAGE_DARK 리터럴과 반드시 일치시킬 것. 2026-08-07 파스텔 전환은
+   라이트 테마에만 적용했다 — 다크는 순검정 배경 위에서 오히려 선명한 고채도 라인이 필요해
+   파스텔 방향과 반대이므로, 이번 라운드에서는 기존 값을 그대로 유지한다. */
 :root[data-theme="dark"] {
   --stage-po-color: #60A5FA;
   --stage-contract-color: #A78BFA;
@@ -71,7 +99,17 @@
 
 body {
   margin: 0;
-  background: var(--page-bg);
+  /* 페이지 전체 바탕에 대표색을 아주 옅게 우려낸 대각 그라데이션을 얹는다 — 100deg로
+     좌(중립)→우(집행)로 흐르되 살짝 오른쪽으로 기울인 각도. 카드(--card-bg)는 순백을 유지해
+     내용 위계는 그대로 두고, 카드 사이 여백에서만 은은하게 드러난다. */
+  background: linear-gradient(
+    100deg,
+    var(--page-bg) 0%,
+    var(--stage-po-wash) 32%,
+    var(--stage-contract-wash) 62%,
+    var(--stage-execution-wash) 100%
+  );
+  background-attachment: fixed;
   color: var(--text-main);
   font-family: "Pretendard", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
 }

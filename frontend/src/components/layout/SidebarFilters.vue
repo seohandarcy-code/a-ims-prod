@@ -381,8 +381,8 @@ onBeforeUnmount(() => {
   height: 16px;
   padding: 0 3px;
   border-radius: 999px;
-  background: var(--neutral-strong);
-  color: #fff;
+  background: var(--select-fill);
+  color: var(--select-fill-text);
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 16px;

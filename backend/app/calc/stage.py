@@ -140,10 +140,10 @@ FUNNEL_ITEMS: list[tuple[str, str, str, str]] = [
     ("review_done", "심의 완료", "checkpoint", "review"),
     ("erp", "ERP 등록", "component", "contract"),
     ("irb_path", "IRB-ITPMS 계약", "component", "contract"),
-    ("contract_pending", "계약 대기", "component", "contract"),
+    ("contract_pending", "계약 미완료", "component", "contract"),
     ("contract_done", "계약 완료", "checkpoint", "contract"),
     ("settled", "정산 완료", "component", "settle"),
-    ("unsettled", "투자 미완료", "component", "settle"),
+    ("unsettled", "정산 미완료", "component", "settle"),
     ("investment_done", "투자 완료", "checkpoint", "settle"),
 ]
 

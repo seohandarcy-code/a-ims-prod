@@ -1,15 +1,20 @@
 /**
- * 단계 색상 언어(품의=블루/계약=퍼플/집행=그린) 상수 모듈.
+ * 단계 색상 언어(심의=블루/계약=퍼플/집행=그린) 상수 모듈 — 3단 티어(ink/fill/wash).
  * ECharts option은 순수 JS 객체라 CSS 변수를 읽지 못하므로, theme/tokens.css의
- * --stage-* 값과 반드시 동일하게 유지할 것.
+ * --stage-*-{ink,fill,wash} 값과 반드시 동일하게 유지할 것.
+ * po/contract/execution = ink 티어, *Soft = wash 티어(하위호환 이름 유지), *Fill = fill 티어.
+ * 파스텔 톤 전환(2026-08-07) — 근거는 docs/design-review/2026-08-07-pastel-palette-review.md 참고.
  */
 export const STAGE = {
-  po: '#1428A0',
-  contract: '#7C3AED',
-  execution: '#059669',
-  poSoft: '#DBEAFE',
-  contractSoft: '#EDE9FE',
-  executionSoft: '#D1FAE5',
+  po: '#3B5BC0',
+  contract: '#7A5BC4',
+  execution: '#1E8264',
+  poFill: '#7189DC',
+  contractFill: '#9E80DB',
+  executionFill: '#3DA07E',
+  poSoft: '#E6EAFA',
+  contractSoft: '#EFEAFB',
+  executionSoft: '#DCF0E8',
 } as const
 
 /**

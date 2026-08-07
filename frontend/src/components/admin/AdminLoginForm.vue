@@ -86,8 +86,8 @@ async function handleSubmit(): Promise<void> {
   padding: 0.55rem 0;
   border: none;
   border-radius: 0.5rem;
-  background: var(--neutral-strong);
-  color: #fff;
+  background: var(--select-fill);
+  color: var(--select-fill-text);
   font-weight: 700;
   cursor: pointer;
 }
