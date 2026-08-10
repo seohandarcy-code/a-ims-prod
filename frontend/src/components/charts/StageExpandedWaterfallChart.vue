@@ -17,6 +17,7 @@
       </div>
 
       <div class="funnel-plot">
+        <div class="funnel-plot-baseline" />
         <div
           v-for="cluster in clusters"
           :key="cluster.key"
@@ -59,7 +60,11 @@
               @click="emit('select', ci.item.key)"
               @keydown.enter="emit('select', ci.item.key)"
             >
-              {{ ci.item.label }}
+              <span
+                v-for="(line, lineIdx) in labelLines(ci.item.label)"
+                :key="lineIdx"
+                class="label-line"
+              >{{ line }}</span>
             </span>
           </div>
 
@@ -156,6 +161,13 @@ const clusters = computed<Cluster[]>(() => {
 
 function groupLabelCount(key: string): number {
   return props.items.find((i) => i.key === key)?.count ?? 0
+}
+
+// 라벨을 공백 기준으로 줄바꿈한다 — 열 너비에 따라 자연 줄바꿈 여부가 갈리면(예: "팀장 심의"는
+// 1줄, "센터장 심의"는 2줄) 같은 행 안에서 통일감이 깨진다. 두 단어짜리 라벨은 항상 2줄로
+// 고정해 일관되게 보이게 한다(2026-08-10 오너 요청).
+function labelLines(label: string): string[] {
+  return label.split(' ')
 }
 
 // group별 대표색 — 계획=중립, 심의=파랑, 계약=보라, 정산=초록. 이탈/미도달 항목만 회색.
@@ -262,11 +274,24 @@ function barStyle(ci: ClusterItem): Record<string, string> {
 /* 클러스터가 4개뿐이라 컨테이너 폭에 맞춰 사이 간격을 유연하게 벌려서(space-between)
    오른쪽에 여백이 남지 않고 패널 폭을 끝까지 채우도록 한다(2026-08-10 오너 피드백). */
 .funnel-plot {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   flex: 1 1 auto;
   gap: 20px;
+}
+
+/* x축 기준선 — 클러스터마다 따로 그리면(.funnel-bars의 border-bottom) 클러스터 사이 간격만큼
+   선이 끊겨 보인다(2026-08-10 오너 피드백). 막대 높이(230px)에 맞춰 플롯 전체 폭을 가로지르는
+   선 하나를 별도로 올려서 끊김 없이 이어지게 한다. */
+.funnel-plot-baseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 230px;
+  border-top: 1px solid var(--border-color);
+  pointer-events: none;
 }
 
 .funnel-cluster {
@@ -282,9 +307,6 @@ function barStyle(ci: ClusterItem): Record<string, string> {
   align-items: flex-end;
   gap: 8px;
   height: 230px;
-  /* y축 세로선과 짝이 되는 기준선(2026-08-10 오너 요청) — 막대가 바닥에 닿는 지점을
-     명확히 표시해 차트에 안정감을 준다. */
-  border-bottom: 1px solid var(--border-color);
 }
 
 .funnel-bar-col {
@@ -362,6 +384,10 @@ function barStyle(ci: ClusterItem): Record<string, string> {
 
 .funnel-label.wide-label {
   width: 84px;
+}
+
+.label-line {
+  display: block;
 }
 
 .funnel-label:hover {
