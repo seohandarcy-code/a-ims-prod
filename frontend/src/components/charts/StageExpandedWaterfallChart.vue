@@ -282,6 +282,9 @@ function barStyle(ci: ClusterItem): Record<string, string> {
   align-items: flex-end;
   gap: 8px;
   height: 230px;
+  /* y축 세로선과 짝이 되는 기준선(2026-08-10 오너 요청) — 막대가 바닥에 닿는 지점을
+     명확히 표시해 차트에 안정감을 준다. */
+  border-bottom: 1px solid var(--border-color);
 }
 
 .funnel-bar-col {
