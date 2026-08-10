@@ -74,8 +74,9 @@ function onChartClick(params: ECElementEvent): void {
 }
 
 const option = computed<EChartsOption>(() => ({
-  // right는 'right' 위치 라벨(예: 기준선 라벨)이 잘리지 않도록 여유를 둔다.
-  grid: { left: 55, right: 95, top: 55, bottom: 60 },
+  // right는 'right' 위치 라벨(예: 기준선 라벨)이 잘리지 않을 최소한만 확보한다 —
+  // 기존 95px은 필요 이상으로 넓어 좌우 여백이 어긋나 보였다(2026-08-10 오너 피드백).
+  grid: { left: 55, right: 68, top: 55, bottom: 60 },
   legend: { top: 0 },
   xAxis: {
     type: 'category',

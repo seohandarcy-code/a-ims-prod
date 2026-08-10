@@ -381,8 +381,8 @@ onBeforeUnmount(() => {
   height: 16px;
   padding: 0 3px;
   border-radius: 999px;
-  background: var(--select-fill);
-  color: var(--select-fill-text);
+  background: var(--org-select-fill);
+  color: var(--org-select-fill-text);
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 16px;
@@ -511,9 +511,9 @@ onBeforeUnmount(() => {
 }
 
 .option-btn.active {
-  background: var(--select-fill);
-  border-color: var(--select-fill);
-  color: var(--select-fill-text);
+  background: var(--org-select-fill);
+  border-color: var(--org-select-fill);
+  color: var(--org-select-fill-text);
   font-weight: 700;
 }
 
