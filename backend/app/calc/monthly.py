@@ -120,16 +120,17 @@ def monthly_review_amount_table(df: pd.DataFrame, current_month: int) -> pd.Data
 
 
 def monthly_contract_amount_table(df: pd.DataFrame, current_month: int) -> pd.DataFrame:
-    """계약완료 기준(종합현황 "계약 완료" KPI와 동일) 월별 금액 추이 — 계약완료월=contract_month, 금액=실행품의금액."""
+    """계약완료 기준(종합현황 "계약 완료" KPI와 동일) 월별 금액 추이 — 계약완료월=계약월_입력,
+    금액=계약금액_입력(2026-08-11 오너 요청 — 기존 계약_월/실행품의금액에서 변경)."""
     base = pd.DataFrame({"월": list(range(1, 13))})
     contract_rows: list[dict] = []
 
     for _, row in df.iterrows():
         if not is_contract_completed(row):
             continue
-        month = extract_month(row.get(COL["contract_month"], ""))
+        month = extract_month(row.get(COL["contract_month_input"], ""))
         if month is not None and 1 <= month <= current_month:
-            contract_rows.append({"월": month, "계약금액": row[COL["execution_po_amount"]], "계약건수": 1})
+            contract_rows.append({"월": month, "계약금액": row[COL["contract_amount_input"]], "계약건수": 1})
 
     if contract_rows:
         contract_monthly = (
@@ -158,19 +159,19 @@ def monthly_contract_amount_records(df: pd.DataFrame, current_month: int) -> lis
 
 def monthly_contract_table(df: pd.DataFrame, current_month: int) -> pd.DataFrame:
     """계약완료(is_contract_completed) 월별 건수/금액 추이 — 종합현황과 동일 기준
-    (계약월=contract_month, 금액=실행품의금액)."""
+    (계약월=계약월_입력, 금액=계약금액_입력. 2026-08-11 오너 요청 — 기존 계약_월/실행품의금액에서 변경)."""
     base = pd.DataFrame({"월": list(range(1, 13))})
     contract_rows = []
 
     for _, row in df.iterrows():
-        contract_month = extract_month(row.get(COL["contract_month"], ""))
+        contract_month = extract_month(row.get(COL["contract_month_input"], ""))
         if (
             is_contract_completed(row)
             and contract_month is not None
             and 1 <= contract_month <= current_month
         ):
             contract_rows.append(
-                {"월": contract_month, "계약건수": 1, "계약금액": row[COL["execution_po_amount"]]}
+                {"월": contract_month, "계약건수": 1, "계약금액": row[COL["contract_amount_input"]]}
             )
 
     contract_monthly = (
