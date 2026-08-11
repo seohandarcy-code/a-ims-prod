@@ -7,7 +7,7 @@
       v-for="card in cards"
       :key="card.label"
       class="kpi-card"
-      :class="[`tone-${card.tone ?? 'normal'}`, { dense, 'has-foot': !!card.secondary }]"
+      :class="[`tone-${card.tone ?? 'normal'}`, { dense, 'has-foot': !!card.secondary || !!card.secondaryGroup?.length }]"
       :title="card.tooltip ?? card.caption"
     >
       <div class="kpi-body">
@@ -31,7 +31,22 @@
         </div>
       </div>
       <div
-        v-if="card.secondary"
+        v-if="card.secondaryGroup?.length"
+        class="kpi-foot kpi-foot-flow"
+      >
+        <span class="kpi-foot-label">{{ card.secondaryGroup[0].label }}</span>
+        <span class="kpi-foot-value">{{ card.secondaryGroup[0].number }}{{ card.secondaryGroup[0].unit ?? '' }}</span>
+        <template
+          v-for="item in card.secondaryGroup.slice(1)"
+          :key="item.label"
+        >
+          <span class="kpi-foot-sep">/</span>
+          <span class="kpi-foot-mini-label">{{ item.label }}</span>
+          <span class="kpi-foot-value">{{ item.number }}{{ item.unit ?? '' }}</span>
+        </template>
+      </div>
+      <div
+        v-else-if="card.secondary"
         class="kpi-foot"
       >
         <span class="kpi-foot-label">{{ card.secondaryLabel ?? '금액' }}</span>
@@ -47,12 +62,23 @@ export interface KpiValue {
   unit?: string
 }
 
+export interface KpiFootItem {
+  label: string
+  number: string
+  unit?: string
+}
+
 export interface MiniKpiCard {
   label: string
   value: string | KpiValue
   secondary?: string | KpiValue
   /** 풋 스트립 좌측 미니 라벨. 지정하지 않으면 '금액'. */
   secondaryLabel?: string
+  /** 풋 스트립에 금액 2개 이상을 "라벨 값 / 라벨 값"으로 보여줄 때 사용한다(예: 집행금액과
+   * 계약금액을 함께). 지정하면 secondary/secondaryLabel 대신 이 배열로 렌더링하며, 각 항목의
+   * label은 값(bold)보다 작은 보조 라벨 크기로 표시돼 위계가 섞이지 않는다
+   * (2026-08-11 오너 피드백 — 병기한 두 번째 금액의 라벨이 숫자와 같은 크기라 어색했음). */
+  secondaryGroup?: KpiFootItem[]
   caption?: string
   tooltip?: string
   tone?: 'normal' | 'good' | 'warn' | 'bad' | 'po' | 'contract' | 'execution' | 'total' | 'total-light'
@@ -176,6 +202,8 @@ function secondaryText(value: string | KpiValue): string {
   color: var(--text-subtle);
   margin-top: 0.3rem;
   line-height: 1.3;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
 }
 
 /* ===== D안: 풋 스트립 분리형 (금액을 하단 각주 띠로 물리 분할) ===== */
@@ -188,6 +216,16 @@ function secondaryText(value: string | KpiValue): string {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+}
+
+/* 금액 2개 이상을 병기할 때는 라벨/값을 양끝으로 벌리지 않고, "집행금액 13.7억 / 계약금액
+   29.7억" 전체를 하나의 흐름으로 왼쪽 정렬 + 균일한 간격으로 배치한다 — space-between을 쓰면
+   첫 라벨과 첫 값 사이만 간격이 크게 벌어져 나머지 항목들과 균형이 안 맞았다
+   (2026-08-11 오너 피드백). */
+.kpi-foot-flow {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 0.35em;
 }
 
 .tone-good.has-foot .kpi-foot,
@@ -208,9 +246,20 @@ function secondaryText(value: string | KpiValue): string {
 }
 
 .kpi-foot-value {
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 700;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.kpi-foot-mini-label {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-subtle);
+}
+
+.kpi-foot-sep {
+  font-size: 0.7rem;
+  color: var(--text-subtle);
 }
 </style>
