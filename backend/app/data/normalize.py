@@ -51,9 +51,12 @@ def normalize_data(df: pd.DataFrame) -> pd.DataFrame:
         "변경",
     )
 
+    # 분모를 기본품의금액이 아니라 실행품의금액으로 쓴다 — 종합현황 KPI "투자 집행율"과
+    # 같은 기준으로 통일해, 상세리스트 집행률과 KPI 집행율이 같은 건에 대해 다르게 보이지
+    # 않게 한다(2026-08-11 오너 요청).
     df["집행률"] = np.where(
-        df[COL["po_amount"]] > 0,
-        df[COL["executed_amount"]] / df[COL["po_amount"]] * 100,
+        df[COL["execution_po_amount"]] > 0,
+        df[COL["executed_amount"]] / df[COL["execution_po_amount"]] * 100,
         0,
     )
 
