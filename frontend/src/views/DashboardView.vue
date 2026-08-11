@@ -63,6 +63,7 @@
               <MonthlyComboChart
                 :categories="monthLabels"
                 :lines="monthlyLines"
+                :reference-line="referenceLine"
                 left-axis-name="금액(억 원)"
                 :selected-month="selectedMonthKey"
                 @select="onMonthSelect"
@@ -77,8 +78,7 @@
       </div>
       <div class="panel-box">
         <div class="org-hint">
-          조직, 투자 진행 흐름, 월별 진행 흐름 구분에 따른 상세리스트를 보여줍니다.<br>
-          * 신호등 의미: 초록-심의완료, 노랑-팀장심의예정월 경과(미완료)
+          조직, 투자 진행 흐름, 월별 진행 흐름 구분에 따른 상세리스트를 보여줍니다.
         </div>
         <DetailTable
           :columns="data.detail_columns"
@@ -97,7 +97,7 @@ import { useDashboardData } from '../composables/useDashboardData'
 import OrgTree from '../components/layout/OrgTree.vue'
 import MiniKpiGrid, { type MiniKpiCard } from '../components/kpi/MiniKpiGrid.vue'
 import StageExpandedWaterfallChart from '../components/charts/StageExpandedWaterfallChart.vue'
-import MonthlyComboChart, { type ComboLineSeries } from '../components/charts/MonthlyComboChart.vue'
+import MonthlyComboChart, { type ComboLineSeries, type ReferenceLine } from '../components/charts/MonthlyComboChart.vue'
 import DetailTable from '../components/table/DetailTable.vue'
 import { STAGE } from '../theme/stageColors'
 
@@ -160,7 +160,7 @@ const kpiCards = computed<MiniKpiCard[]>(() => {
         number: (k.review_sum / 100_000_000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
         unit: '억',
       },
-      caption: '센터심의 기준 (5억 이하는 팀심의)',
+      caption: '진행투자계획 중, 센터심의완료 (5억↓ 팀)',
       tone: 'po',
       emphasizeValue: true,
     },
@@ -171,7 +171,7 @@ const kpiCards = computed<MiniKpiCard[]>(() => {
         number: (k.contract_done_sum / 100_000_000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
         unit: '억',
       },
-      caption: 'ERP 등록 또는 계약',
+      caption: '심의완료건 중, ERP등록 또는 계약',
       tone: 'contract',
       emphasizeValue: true,
     },
@@ -182,18 +182,25 @@ const kpiCards = computed<MiniKpiCard[]>(() => {
         number: (k.investment_done_sum / 100_000_000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
         unit: '억',
       },
-      caption: '정산 완료',
+      caption: '계약완료건 중, 정산 완료',
       tone: 'execution',
       emphasizeValue: true,
     },
     {
-      label: '투자 집행',
+      label: '투자 집행율',
       value: { number: k.amount_execution_rate.toFixed(1), unit: '%' },
-      secondary: {
-        number: (k.execution_settled_sum / 100_000_000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
-        unit: '억',
-      },
-      secondaryLabel: '집행금액',
+      secondaryGroup: [
+        {
+          label: '집행금액',
+          number: (k.execution_settled_sum / 100_000_000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+          unit: '억',
+        },
+        {
+          label: '계약금액',
+          number: (k.contract_done_sum / 100_000_000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+          unit: '억',
+        },
+      ],
       caption: '집행금액 / 계약금액',
       tone: 'execution',
     },
@@ -207,7 +214,6 @@ const NEUTRAL_LINE = '#595870'
 
 const monthlyLines = computed<ComboLineSeries[]>(() => {
   if (!data.value) return []
-  const totalPlanEok = data.value.executive_kpi.invest_sum / 100_000_000
   return [
     {
       name: '누적 심의금액',
@@ -233,17 +239,19 @@ const monthlyLines = computed<ComboLineSeries[]>(() => {
       labelFormatter: (v) => `${v.toFixed(1)}억`,
       labelPosition: 'bottom',
     },
-    {
-      name: '전체 투자계획 금액',
-      data: monthLabels.value.map(() => totalPlanEok),
-      color: NEUTRAL_LINE,
-      lineType: 'dotted',
-      labelFormatter: (v) => `${v.toFixed(1)}억`,
-      labelPosition: 'right',
-      showSymbol: false,
-      labelOnlyLast: true,
-    },
   ]
+})
+
+// "전체 투자계획 금액" 기준선은 더 이상 매월 반복되는 데이터 포인트 라인이 아니라 markLine으로
+// 그린다 — 그리드 끝(마디)까지 선이 이어지고 그 뒤에 값 라벨이 붙는다(2026-08-11 오너 요청).
+const referenceLine = computed<ReferenceLine | undefined>(() => {
+  if (!data.value) return undefined
+  return {
+    value: data.value.executive_kpi.invest_sum / 100_000_000,
+    color: NEUTRAL_LINE,
+    formatter: (v) => `${v.toFixed(1)}억`,
+    name: '전체 투자계획 금액',
+  }
 })
 </script>
 

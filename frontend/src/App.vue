@@ -21,7 +21,7 @@
       <main class="main-content">
         <nav class="tab-bar">
           <button
-            v-for="tab in tabs"
+            v-for="tab in visibleTabs"
             :key="tab.key"
             type="button"
             class="tab-btn"
@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useFilters } from './composables/useFilters'
 import AdminModal from './components/admin/AdminModal.vue'
 import SidebarFilters from './components/layout/SidebarFilters.vue'
@@ -51,10 +51,14 @@ import StatusDetailView from './views/StatusDetailView.vue'
 
 const { meta, loadMeta } = useFilters()
 
+// 투자 진행 상세현황 탭은 2026-08-11 오너 요청으로 숨김 처리한다 — 코드/라우팅(?tab=status-detail)은
+// 그대로 두고 탭 바에서만 감춘다(추후 재노출 시 hidden만 제거하면 됨).
 const tabs = [
-  { key: 'dashboard', label: '투자 종합현황' },
-  { key: 'status-detail', label: '투자 진행 상세현황' },
+  { key: 'dashboard', label: '투자 종합현황', hidden: false },
+  { key: 'status-detail', label: '투자 진행 상세현황', hidden: true },
 ] as const
+
+const visibleTabs = computed(() => tabs.filter((t) => !t.hidden))
 
 const initialTab = new URLSearchParams(window.location.search).get('tab')
 const activeTab = ref<(typeof tabs)[number]['key']>(
@@ -97,11 +101,13 @@ onMounted(loadMeta)
 }
 
 .tab-btn {
-  padding: 0.65rem 1.3rem;
+  /* 투자 진행 상세현황 탭을 숨기면서 남은 "투자 종합현황" 탭이 사실상 페이지 제목 역할을
+     겸하게 되어 명칭/버튼 크기를 살짝 키웠다(2026-08-11 오너 요청). */
+  padding: 0.8rem 1.6rem;
   border: none;
   border-radius: 999px;
   background: none;
-  font-size: 1rem;
+  font-size: 1.15rem;
   font-weight: 650;
   color: var(--text-subtle);
   cursor: pointer;

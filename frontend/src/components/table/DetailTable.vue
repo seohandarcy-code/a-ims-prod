@@ -9,6 +9,13 @@
 
     <div class="table-wrap">
       <table class="simple-table">
+        <colgroup>
+          <col
+            v-for="col in columns"
+            :key="col.key"
+            :style="isMonthNarrowCol(col.key) ? { width: '4.4rem' } : undefined"
+          >
+        </colgroup>
         <thead>
           <tr>
             <th
@@ -89,6 +96,16 @@ function formatMoney(value: unknown): string {
 function clampPct(value: unknown): number {
   const num = Number(value ?? 0)
   return Math.max(0, Math.min(100, num))
+}
+
+// "계약월"(contract_month_input)이 옆 "심의월"(review_month)보다 눈에 띄게 넓게 렌더링되는
+// 문제(2026-08-11 오너 피드백) — table-layout:auto + width:100%에서는 값 길이가 같아도
+// 컬럼별로 여백이 고르게 배분되지 않는다. 두 컬럼에 동일한 고정 폭을 줘서 값 길이("N월")에
+// 맞는 폭으로 나란히 맞춘다.
+const MONTH_NARROW_COLS = new Set(['review_month', 'contract_month_input'])
+
+function isMonthNarrowCol(key: string): boolean {
+  return MONTH_NARROW_COLS.has(key)
 }
 </script>
 

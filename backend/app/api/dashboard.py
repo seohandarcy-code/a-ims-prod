@@ -111,5 +111,5 @@ def get_dashboard(
         monthly_flow=monthly_flow,
         detail_columns=DETAIL_COLUMNS,
         detail_search_keys=DETAIL_SEARCH_KEYS,
-        detail_rows=build_detail_rows(detail_rows_df, current_month),
+        detail_rows=build_detail_rows(detail_rows_df),
     )
