@@ -125,6 +125,23 @@ def funnel_key_mask(df: pd.DataFrame, key: str) -> pd.Series:
     return _funnel_masks(df).get(key, pd.Series(False, index=df.index))
 
 
+def flow_stage_mask(df: pd.DataFrame, keys: list[str]) -> pd.Series:
+    """사이드바 "투자 진행 흐름 구분" 다중선택(flow_stage) 키들을 OR로 합친 row mask.
+
+    funnel_key_mask(막대 클릭 단일선택)와 같은 기준을 공유하는 다중선택 버전이다. 2026-08-11
+    오너 피드백 이전에는 이 필터를 퍼널 자신의 집계 대상(org_filtered_df)에도 걸었는데, 그러면
+    "Drop만 체크"처럼 퍼널이 자기 자신을 필터링하는 순환 논리가 되어 퍼널 막대 수치가 왜곡됐다.
+    그래서 이제 이 마스크는 상세 리스트(detail_rows_df)에만 적용한다 — 퍼널/이 필터의 영향을
+    받는 KPI 항목들의 집계 스코프에는 쓰지 않는다.
+    """
+    if df.empty:
+        return pd.Series(False, index=df.index)
+    mask = pd.Series(False, index=df.index)
+    for key in keys:
+        mask = mask | funnel_key_mask(df, key)
+    return mask
+
+
 # "종합진행 퍼널" 16개 막대의 단일 소스 — (key, label, kind, group). count가 필요한
 # make_progress_funnel과, count 없이 key/label만 필요한 사이드 필터(funnel_filter_options)가 함께 쓴다.
 # "investment_done"은 "settled"와 동일 마스크를 쓰는 체크포인트 표시용 별칭이다.
@@ -160,7 +177,12 @@ def make_progress_funnel(df: pd.DataFrame) -> list[dict]:
         counts = dict.fromkeys(["total", *FUNNEL_MASK_KEYS], 0)
     else:
         masks = _funnel_masks(df)
-        counts = {"total": int(len(df)), **{key: int(mask.sum()) for key, mask in masks.items()}}
+        # "total"(전체 투자계획)은 len(df)가 아니라 계획/계획외/Drop 마스크의 합으로 센다 —
+        # 종합현황 KPI "전체 투자계획" 카드(plan_type.isin(["계획","계획외","Drop"]))와 동일
+        # 기준이어야, 계획구분이 이 3개 값이 아닌 행(공백 등)이 있어도 두 수치가 항상 일치한다
+        # (2026-08-11 오너 피드백 — 퍼널의 total과 KPI 카드 숫자가 서로 달라 보이는 문제).
+        plan_total_count = int((masks["plan"] | masks["plan_out"] | masks["drop"]).sum())
+        counts = {"total": plan_total_count, **{key: int(mask.sum()) for key, mask in masks.items()}}
 
     return [
         {

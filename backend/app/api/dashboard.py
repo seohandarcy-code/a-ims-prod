@@ -8,7 +8,7 @@ from app.calc.detail import DETAIL_COLUMNS, DETAIL_SEARCH_KEYS, build_detail_row
 from app.calc.helpers import extract_month, is_contract_completed, is_review_completed, safe_divide, unique_sorted
 from app.calc.kpi import calculate_kpi_values
 from app.calc.org import filter_by_selected_org
-from app.calc.stage import funnel_key_mask, make_progress_funnel
+from app.calc.stage import flow_stage_mask, funnel_key_mask, make_progress_funnel
 from app.calc.monthly import monthly_compare_records
 from app.data.columns import COL, PJT_TOTAL_LABEL
 from app.data.store import DataStore, get_store
@@ -38,6 +38,13 @@ def get_dashboard(
     # 종합진행 퍼널 막대를 클릭하면(funnel_key) 상세 리스트만 그 항목 기준으로 한 번 더 좁힌다.
     # KPI 카드는 계속 원래 detail_filtered_df(조직 스코프) 기준으로 계산해야 하므로 별도 변수로 둔다.
     detail_rows_df = detail_filtered_df[funnel_key_mask(detail_filtered_df, funnel_key)] if funnel_key else detail_filtered_df
+
+    # 사이드바 "투자 진행 흐름 구분" 다중선택(flow_stage)도 상세 리스트만 좁힌다 — funnel_key(막대
+    # 클릭 단일선택)와 같은 기준을 공유하는 다중선택 버전이다. 퍼널 자신의 집계(org_filtered_df)에는
+    # 걸지 않는다 — 걸면 "Drop만 체크"처럼 퍼널이 자기 자신을 필터링하는 순환 논리가 되어 퍼널/KPI
+    # 수치가 서로 어긋나는 문제가 있었다(2026-08-11 오너 피드백).
+    if filters.flow_stage:
+        detail_rows_df = detail_rows_df[flow_stage_mask(detail_rows_df, filters.flow_stage)]
 
     # 월별 진행 흐름 그래프를 클릭하면(month_key) 상세 리스트에 보이는 월 관련 컬럼(계약월_입력/팀장심의예정)
     # 중 하나라도 그 달과 일치하는 행만 남긴다. extract_month()로 정확히 해석해 비교하므로

@@ -6,7 +6,6 @@ from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth.state import get_auth_store
-from app.calc.stage import funnel_key_mask
 from app.data.columns import COL
 from app.data.store import DataStore, get_store
 
@@ -36,7 +35,6 @@ def apply_common_filters(
     center_need: list[str] | None,
     team: list[str] | None = None,
     part: list[str] | None = None,
-    flow_stage: list[str] | None = None,
 ) -> pd.DataFrame:
     filtered = df
 
@@ -63,18 +61,19 @@ def apply_common_filters(
             )
         ]
 
-    if flow_stage:
-        # "투자 진행 흐름 구분"의 16개 항목 중 선택된 것들을 OR로 합친다(종합현황 퍼널과 동일 기준).
-        mask = pd.Series(False, index=filtered.index)
-        for key in flow_stage:
-            mask = mask | funnel_key_mask(filtered, key)
-        filtered = filtered[mask]
-
     return filtered
 
 
 class CommonFilters:
-    """사이드바 필터 쿼리 파라미터 (조직 5종 + 팀/파트 계층 2종 + 투자 진행 흐름 구분)."""
+    """사이드바 필터 쿼리 파라미터 (조직 5종 + 팀/파트 계층 2종 + 투자 진행 흐름 구분).
+
+    flow_stage(투자 진행 흐름 구분 체크박스)는 apply()가 적용하는 공통 필터에서 뺐다 —
+    퍼널 차트 자신의 집계 기준(org_filtered_df)에 이 필터를 걸면 "Drop만 체크"처럼 자기
+    자신을 필터링하는 순환 논리가 되어 퍼널/KPI 수치가 서로 어긋나는 문제가 있었다
+    (2026-08-11 오너 피드백). flow_stage는 퍼널과 같은 funnel_key_mask 기준을 공유하는
+    "상세 리스트 좁히기" 용도이므로, 상세 리스트를 만드는 쪽(dashboard.py)에서
+    filters.flow_stage를 직접 읽어 detail_rows_df에만 적용한다.
+    """
 
     def __init__(
         self,
@@ -100,5 +99,4 @@ class CommonFilters:
             self.center_need,
             self.team,
             self.part,
-            self.flow_stage,
         )
