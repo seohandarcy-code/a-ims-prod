@@ -33,7 +33,10 @@ def get_dashboard(
     org_options = [PJT_TOTAL_LABEL] + unique_sorted(all_df[COL["org"]])
 
     org_filtered_df = filter_by_selected_org(sidebar_filtered_df, selected_org)
-    detail_filtered_df = filter_by_selected_org(all_df, selected_org)
+    # 상세리스트도 사이드바 공통 필터(조직/팀장심의 의견/센터장 심의필요)를 반영해야 하므로
+    # all_df가 아니라 sidebar_filtered_df를 기준으로 스코핑한다(2026-08-19 오너 피드백 —
+    # 사이드바 필터가 상세리스트까지 연동되지 않던 버그 수정).
+    detail_filtered_df = filter_by_selected_org(sidebar_filtered_df, selected_org)
 
     # 종합진행 퍼널 막대를 클릭하면(funnel_key) 상세 리스트만 그 항목 기준으로 한 번 더 좁힌다.
     # KPI 카드는 계속 원래 detail_filtered_df(조직 스코프) 기준으로 계산해야 하므로 별도 변수로 둔다.
