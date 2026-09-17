@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import urllib.parse
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -31,9 +32,39 @@ CUSTOM_COLUMN_TYPES_FILE = DATA_REV_DIR / "custom_column_types.json"
 
 # 2026-09-16: No-DB 파일 스냅샷 방식에서 SQLite(1단계)로 전환. 위 BASE_FILE/REV_FILE은
 # 이제 "최초 시딩" 소스로만 쓰이고, 이후 런타임 읽기/쓰기는 전부 DATABASE_URL을 거친다.
-# 추후 PostgreSQL(2단계)로 전환할 때는 이 값만 postgresql+psycopg://... 로 바꾸면 된다.
-# docs/db-migration-roadmap.md, docs/ENV_AND_SECRETS.md 참고.
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{(DATA_DIR / 'app.db').as_posix()}")
+# 2026-09-17: PostgreSQL(2단계)을 로컬에서 검증. 접속 정보는 두 가지 방식을 모두
+# 지원한다 — 우선순위 순서:
+#   1) DATABASE_URL이 설정돼 있으면 그 값을 그대로 쓴다(로컬 개발처럼 값 하나로
+#      충분한 경우 — 사람이 완성된 DSN 문자열을 직접 관리).
+#   2) DATABASE_URL이 없고 DB_HOST가 설정돼 있으면 DB_HOST/DB_PORT/DB_NAME/DB_USER/
+#      DB_PASSWORD를 조합해 DSN을 만든다(실제 배포 환경처럼 ConfigMap=host/port/name,
+#      Secret=user/password로 나눠 관리하고 싶은 경우 — 사람이 DSN 문자열을 직접
+#      조립하지 않아도 되고, user/password는 이 코드가 URL-safe하게 인코딩한다).
+#   3) 둘 다 없으면 SQLite(fresh clone 기본값)로 폴백한다.
+# docs/db-migration-roadmap.md, docs/ENV_AND_SECRETS.md, README.md "환경변수/Secret" 절 참고.
+def _build_database_url() -> str:
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url:
+        return database_url
+
+    db_host = os.getenv("DB_HOST", "").strip()
+    if db_host:
+        db_port = os.getenv("DB_PORT", "5432").strip()
+        db_name = os.getenv("DB_NAME", "ims").strip()
+        db_user = urllib.parse.quote_plus(os.getenv("DB_USER", "").strip())
+        db_password = urllib.parse.quote_plus(os.getenv("DB_PASSWORD", "").strip())
+        return f"postgresql+psycopg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+    return f"sqlite:///{(DATA_DIR / 'app.db').as_posix()}"
+
+
+DATABASE_URL = _build_database_url()
+
+# 관리자 초기 비밀번호(서버 재기동 시 항상 이 값으로 리셋됨 — app/auth/state.py 참고).
+# 비워두면 로컬 개발 편의를 위해 기존 기본값("0000")을 그대로 쓴다. 여러 서버에 배포할
+# 때 전부 같은 잘 알려진 기본 비밀번호를 공유하지 않도록, 환경마다 Secret으로 다르게
+# 주입할 수 있게 했다.
+ADMIN_BOOTSTRAP_PASSWORD = os.getenv("ADMIN_BOOTSTRAP_PASSWORD", "").strip() or "0000"
 
 CURRENT_YEAR = int(os.getenv("CURRENT_YEAR", "2026"))
 

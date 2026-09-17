@@ -1,6 +1,7 @@
 """관리자 인증 상태 — 전부 메모리에만 보관, 서버 재기동 시 초기화된다.
 
-비밀번호는 파일에 저장하지 않는다: 재기동하면 항상 기본값(0000)으로 리셋된다.
+비밀번호는 파일에 저장하지 않는다: 재기동하면 항상 기본값(DEFAULT_PASSWORD, 환경변수
+ADMIN_BOOTSTRAP_PASSWORD로 오버라이드 가능 — 비워두면 "0000")으로 리셋된다.
 토큰은 opaque random string이며 세션 딕셔너리에만 존재한다 — 서버가
 재시작되면 사라진다(클라이언트도 새로고침 시 로그아웃되는 설계와 합친다).
 """
@@ -11,7 +12,9 @@ import secrets
 import threading
 import time
 
-DEFAULT_PASSWORD = "0000"
+from app.config import ADMIN_BOOTSTRAP_PASSWORD
+
+DEFAULT_PASSWORD = ADMIN_BOOTSTRAP_PASSWORD
 ADMIN_USERNAME = "admin"
 TOKEN_TTL_SECONDS = 60 * 60 * 8
 MAX_LOGIN_ATTEMPTS = 5

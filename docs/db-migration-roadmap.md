@@ -8,7 +8,7 @@
 | 단계 | 내용 | 상태 | 상세 |
 |---|---|---|---|
 | 1 | SQLite 전환 | **완료 (2026-09-16)** | 아래 "1단계: SQLite" 참고 |
-| 2 | PostgreSQL 전환 | 예정 | 아래 "2단계: PostgreSQL(예정)" 참고 |
+| 2 | PostgreSQL 전환 | **로컬 검증 완료 (2026-09-17)**, PDEP 실연동은 예정 | 아래 "2단계: PostgreSQL" 참고 |
 | 3 | DevOps 환경변수/Secret 관리 문서화 | **완료 (2026-09-16)** | `docs/ENV_AND_SECRETS.md` |
 | 4 | SSO 연동 + 자체 사용자 권한 DB | 예정 | 아래 "4단계: SSO/사용자 권한 DB(예정)" 참고 |
 
@@ -33,21 +33,45 @@
   DataFrame을 주고받는 구조라(계산 로직이 전부 `app/calc/*`에 pandas로 있음), Core의
   select()/insert() 결과를 DataFrame으로 바로 옮기는 편이 ORM 객체 매핑보다 잘 맞는다.
 
-## 2단계: PostgreSQL (예정)
+## 2단계: PostgreSQL
 
-1단계에서 이미 SQLAlchemy Core + Alembic으로 만들어 둔 덕분에, 전환은 원칙적으로
-`DATABASE_URL`만 바꾸면 된다(`postgresql+psycopg://user:password@host:5432/ims`).
-착수 전 확인/검토할 것:
+1단계에서 이미 SQLAlchemy Core + Alembic으로 만들어 둔 덕분에, 전환은 정말로
+`DATABASE_URL`만 바꾸면 됐다 — 2026-09-17 로컬 PostgreSQL 14로 실제 검증 완료.
 
-- **접속 정보**: 사내 PDEP이 제공하는 PostgreSQL 인스턴스 주소/자격증명. 배포 시
-  `DATABASE_URL` 전체를 K8s Secret으로 주입(`docs/ENV_AND_SECRETS.md` 참고).
-- **드라이버**: `psycopg`(sync) 추가 설치. `sqlalchemy`/`alembic`은 이미 도입되어 있어
-  추가 코드 변경 없이 대부분 동작해야 하지만, SQLite는 관대한 타입 시스템이라 실제
-  전환 시 `alembic upgrade head`를 PostgreSQL 대상으로 한 번 드라이런해 컬럼
-  타입(TEXT 전제)이 문제없는지 확인 필요.
+### 로컬 검증 (완료)
+
+- Windows에 PostgreSQL 14 네이티브 설치(winget `PostgreSQL.PostgreSQL.14`), 이 프로젝트
+  전용 role/database(`ims_dev`/`ims_dev`, 테스트용 `ims_dev_test`)를 별도로 생성 —
+  `postgres` 슈퍼유저를 앱 접속에 그대로 쓰지 않는다.
+- `backend/requirements.txt`에 `psycopg[binary]` 드라이버 추가.
+- `alembic upgrade head`를 PostgreSQL 대상으로 실행 → 코드 변경 없이 4개 테이블 정상
+  생성 확인(`app/db/models.py`가 전부 `Text`/`Integer`라 방언 문제 없음).
+- `backend/tests/conftest.py`가 `DATABASE_URL`이 이미 설정돼 있으면 그 값을 존중하도록
+  수정 — `DATABASE_URL=postgresql+psycopg://ims_dev:ims_dev_local_pw@127.0.0.1:5432/ims_dev_test pytest tests/`
+  로 기존 테스트 스위트 49개를 그대로 PostgreSQL 대상으로 실행해 전부 통과 확인(평소
+  `pytest tests/`는 여전히 SQLite 임시 파일을 자동으로 씀 — 기본 경험 변화 없음).
+- 앱을 `backend/.env`의 `DATABASE_URL`로 PostgreSQL을 가리키게 기동 → 최초 시딩, 관리자
+  로그인/행 편집/되돌리기/`export/dat` 다운로드까지 SQLite 때와 동일하게 동작 확인.
+- 로컬에서 PostgreSQL로 전환해 개발하는 절차는 `README.md`의 "PostgreSQL로 전환해서
+  개발하기" 절 참고.
+- **환경변수/Secret 확장(2026-09-17)**: 다른 컴퓨터/서버로 옮겨갈 때를 대비해
+  `backend/app/config.py`의 `_build_database_url()`이 `DATABASE_URL` 하나뿐 아니라
+  `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` 조합도 지원하도록 확장했다
+  (둘 다 없으면 SQLite로 폴백). 또한 관리자 초기 비밀번호가 코드에 `"0000"`으로
+  고정돼 있던 것을 `ADMIN_BOOTSTRAP_PASSWORD` 환경변수로 오버라이드 가능하게
+  바꿨다 — 여러 서버가 전부 같은 잘 알려진 기본 비밀번호를 공유하지 않도록.
+  상세는 `docs/ENV_AND_SECRETS.md`와 `README.md` "환경변수와 Secret" 절 참고.
+
+### PDEP 실연동 (예정, 착수 전 확인/검토할 것)
+
+- **접속 정보**: 사내 PDEP이 제공하는 PostgreSQL 인스턴스 주소/자격증명/버전
+  (로컬 검증은 PostgreSQL 14 기준 — PDEP 실제 버전은 미확인,
+  `<CONFIRM_WITH_PDEP_ADMIN>`). `DATABASE_URL` 전체를 Secret 하나로 받을지,
+  `DB_HOST`/`DB_PORT`/`DB_NAME`은 ConfigMap + `DB_USER`/`DB_PASSWORD`만 Secret으로
+  나눠 받을지는 PDEP의 Secret 관리 정책에 맞춰 고르면 된다(둘 다 코드가 이미 지원).
 - **금액 컬럼 타입 최적화(선택)**: 1단계는 기존 파일 시절과 동일하게 금액 컬럼도
   TEXT로 저장해 검증/정규화 로직(`app/data/normalize.py`)을 그대로 재사용했다.
-  PostgreSQL 전환 시점에 NUMERIC으로 바꾸는 것을 후보로 검토할 수 있다(필수 아님).
+  NUMERIC으로 바꾸는 것을 후보로 검토할 수 있다(필수 아님, 로컬 검증에서도 그대로 둠).
 - **Replica 정책 재검토**: No-DB/SQLite 시절 Replica=1 제약은 "파일 동시쓰기 문제
   방지"가 근거였다. PostgreSQL은 진짜 동시쓰기를 지원하므로 백엔드를
   Replica>1로 늘릴 수 있는 선택지가 생기지만, `backend/app/auth/state.py`의
@@ -55,7 +79,7 @@
   않으면 다중 인스턴스에서 로그인 세션이 파드마다 따로 논다 — 4단계(SSO)와
   함께 재검토.
 - K8s 매니페스트(PVC, CronJob 백업 등)는 `docs/투자관리시스템_고도화_개발계획서_v5.md`
-  기준 infra-devops 작업 범위이며, 이번 1단계에서는 건드리지 않았다.
+  기준 infra-devops 작업 범위이며, 이번 로컬 검증에서는 건드리지 않았다.
 
 ## 3단계: DevOps 환경변수/Secret 관리 (완료)
 
