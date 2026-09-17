@@ -16,15 +16,15 @@ model: sonnet
 - 사내 GitHub + Jenkins를 사용하되, 실제 템플릿 규격은 아직 미확인 상태다. 범용 관례(멀티스테이지 Dockerfile, `build → test → image push → deploy` 4단계 파이프라인, 이미지 태그 `{서비스명}:{커밋해시}`)로 우선 작성하고, 실제 규격을 나중에 받으면 그에 맞춰 조정한다는 전제로 작업한다.
 
 ## K8s 필수 요소
-- **PVC(PersistentVolumeClaim) 필수**: backend의 `/data` 디렉터리는 반드시 영구볼륨에 마운트한다 — 이게 없으면 파드 재시작 시 전체 편집 이력이 소실된다.
-- 백엔드 Deployment는 반드시 `replicas: 1`로 설정한다. 프론트엔드는 무상태이므로 여러 개 가능하다.
-- StorageClass/백업 정책이 아직 미확정이므로, K8s CronJob으로 `/data`를 매일 1회 타임스탬프 압축 파일로 자체 백업하는 것을 기본 포함한다(같은 PVC 내 `/data/_backup/`).
+- **PVC(PersistentVolumeClaim) 필수**: backend의 `/data` 디렉터리는 반드시 영구볼륨에 마운트한다 — 이게 없으면 파드 재시작 시 SQLite DB 파일(`data/app.db`, 2026-09-16부터 데이터 계층의 실제 저장소, `docs/db-migration-roadmap.md` 참고)과 시딩용 원본 `.dat`이 함께 소실된다.
+- 백엔드 Deployment는 반드시 `replicas: 1`로 설정한다(SQLite는 다중 프로세스 동시쓰기에 안전하지 않다). 프론트엔드는 무상태이므로 여러 개 가능하다.
+- StorageClass/백업 정책이 아직 미확정이므로, K8s CronJob으로 `/data`(SQLite 파일 포함)를 매일 1회 타임스탬프 압축 파일로 자체 백업하는 것을 기본 포함한다(같은 PVC 내 `/data/_backup/`). 백업 산출물은 파일 단순 복사도 가능하고, 애플리케이션이 이미 제공하는 `GET /api/v1/admin/export/dat`(DB → `.dat` 스냅샷)를 CronJob이 호출하는 방식도 있다 — 후자를 쓰면 로컬 개발 재시딩(`backend/scripts/reseed_from_dat.py`)과 동일한 백업 산출물을 공유하게 된다.
 
 # 이 프로젝트에서 절대 하면 안 되는 것
 
 - **Nginx에 TLS 종료/외부 라우팅 설정 추가 금지**: 이 역할은 PDEP Ingress가 담당하기로 확정됐다. Nginx 설정에 인증서 발급/외부 도메인 라우팅 로직을 만들지 않는다.
 - **PVC 없는 매니페스트 작성 금지**: backend Deployment에 `/data` 볼륨 마운트가 빠진 상태로 매니페스트를 완성했다고 보고하지 않는다.
-- **백엔드 replicas를 1보다 크게 설정 금지**: 오토스케일링/멀티 레플리카 설정을 백엔드에 적용하지 않는다(프론트엔드는 무방).
-- **DB/Redis용 인프라 리소스 생성 금지**: StatefulSet, DB용 Secret/ConfigMap 등을 만들지 않는다 — No-DB 구조이므로 해당 없음.
+- **백엔드 replicas를 1보다 크게 설정 금지**: 오토스케일링/멀티 레플리카 설정을 백엔드에 적용하지 않는다(프론트엔드는 무방). SQLite인 동안은 절대 금지고, PostgreSQL 전환(2단계) 이후에도 관리자 인증 상태가 프로세스 메모리 전용인 한 그대로 유지한다(`docs/db-migration-roadmap.md` 2단계 참고).
+- **1단계(SQLite)에서 별도 DB 서버 인프라 생성 금지**: StatefulSet, DB용 Secret/ConfigMap 등을 만들지 않는다 — SQLite는 PVC 안의 파일 하나일 뿐 별도 서버가 필요 없다. 2단계(PostgreSQL) 착수가 확정되면 이 조항을 재검토한다(그때는 `DATABASE_URL` Secret 등록이 필요 — `docs/ENV_AND_SECRETS.md` 참고).
 - **Jenkins 템플릿 규격을 임의로 확정 짓지 말 것**: 실제 사내 규격이 확인되지 않은 상태이므로, 지금 작성하는 Jenkinsfile은 "확인 전 범용 초안"임을 명시하고, 실제 규격을 받으면 조정이 필요하다는 점을 결과 보고에 남긴다.
 - **로그인 관련 엔드포인트에 레이트리밋 누락 금지**: `/api/v1/admin/login`에는 Nginx 레벨 요청 속도 제한을 반드시 넣는다(무차별 대입 공격 대비).

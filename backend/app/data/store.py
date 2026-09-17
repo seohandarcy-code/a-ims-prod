@@ -1,15 +1,20 @@
-"""No-DB 데이터 계층: base 또는 data_rev 스냅샷을 메모리에 보관.
+"""DB(SQLite, 추후 PostgreSQL) 데이터 계층: DB에 저장된 투자 데이터를 메모리에 캐시.
 
-기동 시 한 번 로드하고, 이후 요청은 메모리 상의 정규화 결과를 사용한다
-(legacy load_current_data의 @st.cache_data 캐시 역할을 서버 프로세스 수준에서 대체).
+기동 시 DB가 비어있으면 base 또는 data_rev 스냅샷(.dat)으로 최초 1회 시딩하고
+(app/db/seed.py.seed_if_empty), 이후로는 오직 DB만 읽고 쓴다. 매 요청은 메모리
+상의 정규화 결과를 사용한다(legacy load_current_data의 @st.cache_data 캐시
+역할을 서버 프로세스 수준에서 대체).
 
-편집(edit_row/add_row)은 append-only 이력을 남기지 않고, raw 데이터 전체를
-매번 data_rev/*_rev.dat에 덮어쓰는 스냅샷 방식이다. load()는 이 rev 파일이
-있으면 그것을, 없으면 base 원본을 읽는다 — 서버가 재기동해도 마지막으로
-저장된 편집 상태를 그대로 이어서 시작한다.
+이전 파일 기반 버전(2026-09-16 이전)과 동일하게, 편집(edit_row/add_row/...)마다
+DB 전체를 다시 조회해 raw_df/정규화본을 재구성한다 — append-only 이력 없이
+"현재 상태" 스냅샷만 관리하는 설계를 그대로 유지한다. get_df()/get_raw_df()가
+파일 시절과 동일하게 한글 헤더를 가진 pandas DataFrame을 반환하므로,
+app/calc/*·app/api/*는 데이터가 파일에서 오는지 DB에서 오는지 알 필요가 없다.
 
-관리자가 추가한 커스텀 컬럼의 타입(text/money/date)은 raw_df 자체에는
-담기지 않으므로 별도 sidecar json(CUSTOM_COLUMN_TYPES_FILE)에 저장한다.
+관리자가 추가한 커스텀 컬럼(text/money/date)은 EAV 테이블
+(custom_column_defs/custom_column_values)에 저장된다. 되돌리기(undo)는
+"바로 이전 상태 1개"만 backup_snapshot 테이블에 JSON으로 보관하는 단일 슬롯
+방식이다(기존 REV_BACKUP_FILE과 동일한 의미).
 """
 from __future__ import annotations
 
@@ -17,20 +22,17 @@ import json
 import logging
 import re
 import threading
+from datetime import datetime, timezone
 
 import pandas as pd
+from sqlalchemy import delete, insert, select, update
 
-from app.config import (
-    BASE_FILE,
-    CUSTOM_COLUMN_TYPES_BACKUP_FILE,
-    CUSTOM_COLUMN_TYPES_FILE,
-    REV_BACKUP_FILE,
-    REV_FILE,
-)
-from app.data.columns import COL, MONEY_COLS, PROGRESS_PAIRS
-from app.data.loader import read_dat
+from app.data.columns import COL, HEADER_TO_KEY, MONEY_COLS, PROGRESS_PAIRS
 from app.data.normalize import infer_current_month, normalize_data
-from app.data.writer import atomic_write_dat, atomic_write_json
+from app.db.engine import engine
+from app.db.export import fetch_raw_dataframe
+from app.db.models import backup_snapshot, custom_column_defs, custom_column_values, investment_rows
+from app.db.seed import replace_all_from_dataframe, seed_if_empty
 
 logger = logging.getLogger(__name__)
 
@@ -132,23 +134,18 @@ class DataStore:
 
     def _load_locked(self) -> None:
         """self._lock을 이미 쥐고 있는 상태에서 호출한다(재진입 금지)."""
-        source = REV_FILE if REV_FILE.exists() else BASE_FILE
-        logger.info("데이터 로드 시작: source=%s", source)
+        logger.info("데이터 로드 시작 (DB)")
         try:
-            raw_df = read_dat(source)
+            seed_if_empty()
+            raw_df, custom_types = fetch_raw_dataframe()
             normalized_df = normalize_data(raw_df)
             current_month = infer_current_month(normalized_df)
-
-            if CUSTOM_COLUMN_TYPES_FILE.exists():
-                with open(CUSTOM_COLUMN_TYPES_FILE, "r", encoding="utf-8-sig") as f:
-                    self._custom_column_types = json.load(f)
-            else:
-                self._custom_column_types = {}
 
             self._raw_df = raw_df
             self._df = normalized_df
             self._current_month = current_month
             self._current_label = f"2026년 {current_month}월"
+            self._custom_column_types = custom_types
             self._ready = True
         except Exception:
             self._ready = False
@@ -191,36 +188,48 @@ class DataStore:
         return dict(self._custom_column_types)
 
     def _backup_before_write(self) -> None:
-        """편집 직전 현재 상태를 1단계 백업으로 남긴다(되돌리기용).
+        """편집 직전 DB 전체 상태를 1단계 백업(단일 슬롯)으로 남긴다(되돌리기용).
 
         self._lock을 이미 쥐고 있는 상태에서 호출한다(재진입 금지). 매 편집마다
-        직전 상태로 덮어써서, 항상 "바로 이전 상태" 1개만 유지한다. 데이터(rev)와
-        커스텀 컬럼 타입(sidecar json)을 하나의 편집 단위로 묶어 함께 백업한다.
+        직전 상태로 덮어써서, 항상 "바로 이전 상태" 1개만 유지한다. 데이터와
+        커스텀 컬럼 타입을 하나의 JSON 스냅샷으로 묶어 함께 백업한다.
         """
-        source = REV_FILE if REV_FILE.exists() else BASE_FILE
-        current_df = read_dat(source)
-        atomic_write_dat(current_df, REV_BACKUP_FILE)
-        atomic_write_json(self._custom_column_types, CUSTOM_COLUMN_TYPES_BACKUP_FILE)
+        raw_df, custom_types = fetch_raw_dataframe()
+        data_json = raw_df.to_json(orient="records", force_ascii=False)
+        types_json = json.dumps(custom_types, ensure_ascii=False)
+
+        with engine.begin() as conn:
+            conn.execute(delete(backup_snapshot))
+            conn.execute(
+                insert(backup_snapshot),
+                {
+                    "id": 1,
+                    "data_json": data_json,
+                    "custom_types_json": types_json,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
 
     def has_backup(self) -> bool:
-        return REV_BACKUP_FILE.exists()
+        with engine.connect() as conn:
+            row = conn.execute(select(backup_snapshot.c.id)).first()
+        return row is not None
 
     def restore_backup(self) -> None:
         with self._lock:
-            if not REV_BACKUP_FILE.exists():
+            with engine.connect() as conn:
+                row = conn.execute(select(backup_snapshot)).mappings().first()
+
+            if row is None:
                 raise RowNotFoundError("되돌릴 이전 상태가 없습니다.")
 
-            backup_df = read_dat(REV_BACKUP_FILE)
-            atomic_write_dat(backup_df, REV_FILE)
-            REV_BACKUP_FILE.unlink(missing_ok=True)
+            backup_df = pd.DataFrame(json.loads(row["data_json"]))
+            custom_types = json.loads(row["custom_types_json"])
 
-            if CUSTOM_COLUMN_TYPES_BACKUP_FILE.exists():
-                with open(CUSTOM_COLUMN_TYPES_BACKUP_FILE, "r", encoding="utf-8-sig") as f:
-                    restored_types = json.load(f)
-            else:
-                restored_types = {}
-            atomic_write_json(restored_types, CUSTOM_COLUMN_TYPES_FILE)
-            CUSTOM_COLUMN_TYPES_BACKUP_FILE.unlink(missing_ok=True)
+            replace_all_from_dataframe(backup_df, custom_types)
+
+            with engine.begin() as conn:
+                conn.execute(delete(backup_snapshot))
 
             self._load_locked()
 
@@ -251,10 +260,24 @@ class DataStore:
 
             self._backup_before_write()
 
-            for field, value in fields.items():
-                raw_df.loc[mask, field] = value
+            core_updates = {HEADER_TO_KEY[h]: v for h, v in fields.items() if h in HEADER_TO_KEY}
+            custom_updates = {h: v for h, v in fields.items() if h not in HEADER_TO_KEY}
 
-            atomic_write_dat(raw_df, REV_FILE)
+            with engine.begin() as conn:
+                if core_updates:
+                    conn.execute(
+                        update(investment_rows).where(investment_rows.c.no == no).values(**core_updates)
+                    )
+                for header, value in custom_updates.items():
+                    conn.execute(
+                        update(custom_column_values)
+                        .where(
+                            custom_column_values.c.row_no == no,
+                            custom_column_values.c.column_key == header,
+                        )
+                        .values(value=value)
+                    )
+
             self._load_locked()
 
             result_mask = pd.to_numeric(self._raw_df[no_col], errors="coerce") == no
@@ -283,12 +306,20 @@ class DataStore:
 
             existing_no = pd.to_numeric(raw_df[no_col], errors="coerce").fillna(0)
             next_no = int(existing_no.max()) + 1 if len(existing_no) else 1
-            new_row[no_col] = str(next_no)
 
-            raw_df = pd.concat([raw_df, pd.DataFrame([new_row])], ignore_index=True)
+            core_values = {
+                HEADER_TO_KEY[h]: v for h, v in new_row.items() if h in HEADER_TO_KEY and h != no_col
+            }
+            custom_values = {h: v for h, v in new_row.items() if h not in HEADER_TO_KEY}
 
-            atomic_write_dat(raw_df, REV_FILE)
-            self._raw_df = raw_df
+            with engine.begin() as conn:
+                conn.execute(insert(investment_rows), {"no": next_no, **core_values})
+                if custom_values:
+                    conn.execute(
+                        insert(custom_column_values),
+                        [{"row_no": next_no, "column_key": k, "value": v} for k, v in custom_values.items()],
+                    )
+
             self._load_locked()
 
             result_mask = pd.to_numeric(self._raw_df[no_col], errors="coerce") == next_no
@@ -310,10 +341,10 @@ class DataStore:
 
             self._backup_before_write()
 
-            raw_df = raw_df.loc[~mask].reset_index(drop=True)
+            with engine.begin() as conn:
+                conn.execute(delete(custom_column_values).where(custom_column_values.c.row_no == no))
+                conn.execute(delete(investment_rows).where(investment_rows.c.no == no))
 
-            atomic_write_dat(raw_df, REV_FILE)
-            self._raw_df = raw_df
             self._load_locked()
 
     def add_column(self, name: str, col_type: str) -> None:
@@ -333,11 +364,15 @@ class DataStore:
 
             self._backup_before_write()
 
-            raw_df[name] = ""
-            atomic_write_dat(raw_df, REV_FILE)
+            with engine.begin() as conn:
+                conn.execute(insert(custom_column_defs), {"key": name, "col_type": col_type})
 
-            self._custom_column_types[name] = col_type
-            atomic_write_json(self._custom_column_types, CUSTOM_COLUMN_TYPES_FILE)
+                nos = [int(n) for n in pd.to_numeric(raw_df[COL["no"]], errors="coerce").dropna().tolist()]
+                if nos:
+                    conn.execute(
+                        insert(custom_column_values),
+                        [{"row_no": no, "column_key": name, "value": ""} for no in nos],
+                    )
 
             self._load_locked()
 
@@ -356,13 +391,10 @@ class DataStore:
 
             self._backup_before_write()
 
-            raw_df = raw_df.drop(columns=[key])
-            atomic_write_dat(raw_df, REV_FILE)
+            with engine.begin() as conn:
+                conn.execute(delete(custom_column_values).where(custom_column_values.c.column_key == key))
+                conn.execute(delete(custom_column_defs).where(custom_column_defs.c.key == key))
 
-            self._custom_column_types.pop(key, None)
-            atomic_write_json(self._custom_column_types, CUSTOM_COLUMN_TYPES_FILE)
-
-            self._raw_df = raw_df
             self._load_locked()
 
 

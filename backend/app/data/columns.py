@@ -115,13 +115,23 @@ PROGRESS_PAIRS: list[tuple[str, str]] = [
     (COL["progress_month_pred"], COL["progress_amount_pred"]),
 ]
 
-# PJT 레벨 단일선택 drill-down의 "전체" sentinel. 실제 `팀` 컬럼 값과 대소문자까지
-# 일치해야 한다(팀이 필터 가능한 실제 데이터가 된 이후로는 우연히 겹치지 않는 값이면
-# 화면에 서로 다른 문자열이 노출되는 버그가 됨).
-PJT_TOTAL_LABEL = "A-Infra기술팀"
+# 조직 트리(팀/PJT/파트) 단일선택 drill-down의 "전체" sentinel.
+#
+# 2026-09-17 이전에는 이 값이 실제 팀명과 우연히 똑같아야만 "전체 보기"가 동작했다
+# (팀이 1개뿐이라 들키지 않았을 뿐, 팀명이 바뀌거나 두 번째 팀이 생기면 즉시 깨지는
+# 구조였다). 이제는 `filter_by_selected_org()`가 `팀` 컬럼 값을 직접 매칭하는 분기를
+# 따로 가지고 있으므로(app/calc/org.py), 이 상수는 실제 팀/PJT/파트 어떤 값과도 절대
+# 겹치지 않는 순수 "필터 없음" 센티널이기만 하면 된다 — 실제 조직명 형태(예: "OO팀",
+# "OO_PJT")를 흉내 내지 말 것.
+PJT_TOTAL_LABEL = "전체"
 
 SIDEBAR_FILTER_KEYS = ["org", "plan_type", "po_done", "leader_opinion", "center_need"]
 
 
 def resolve_col(column_key_or_name: str) -> str:
     return COL.get(column_key_or_name, column_key_or_name)
+
+
+# 한글 헤더 -> COL 키. app/db/* 가 DB 컬럼명(COL 키)과 raw_df 컬럼명(한글 헤더)
+# 사이를 오갈 때 쓴다.
+HEADER_TO_KEY: dict[str, str] = {header: key for key, header in COL.items()}

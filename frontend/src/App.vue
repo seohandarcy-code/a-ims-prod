@@ -2,7 +2,7 @@
   <div class="page">
     <header class="page-header">
       <p class="small-title">
-        {{ meta?.team_name ?? 'A-Infra기술팀' }}
+        {{ meta?.team_name ?? '인프라AX/PI기술팀' }}
       </p>
       <h1 class="big-title">
         {{ meta?.dashboard_title ?? "Investment Management Dashboard '26" }}

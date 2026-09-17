@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from app.api.deps import require_admin
 from app.data.columns import COL, FIELD_PLACEHOLDERS, FIELD_TYPES
 from app.data.store import DataStore, InvalidFieldError, RowNotFoundError, get_store
+from app.db.export import fetch_raw_dataframe
 from app.schemas.admin import AddColumnRequest, RawDataResponse, RowColumn, RowEditRequest, RowResponse
 from app.schemas.auth import StatusResponse
 
@@ -122,3 +123,27 @@ def export_csv(store: DataStore = Depends(get_store)) -> Response:
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="investment_raw_data.csv"'},
     )
+
+
+@router.get("/export/dat")
+def export_dat() -> Response:
+    """운영 DB 상태를 .dat 백업 스냅샷으로 내려받는다.
+
+    로컬 개발 환경에서는 이 파일을 backend/scripts/reseed_from_dat.py로 재시딩해
+    운영 DB의 최신 데이터를 그대로 이어받아 개발할 수 있다.
+    """
+    raw_df, _custom_types = fetch_raw_dataframe()
+    dat_bytes = raw_df.to_csv(sep="\t", index=False).encode("utf-8-sig")
+
+    return Response(
+        content=dat_bytes,
+        media_type="text/tab-separated-values",
+        headers={"Content-Disposition": 'attachment; filename="investment_backup.dat"'},
+    )
+
+
+@router.get("/export/column-types")
+def export_column_types() -> dict[str, str]:
+    """export/dat과 함께 내려받아 재시딩 시 커스텀 컬럼 타입(text/money/date)을 복원한다."""
+    _raw_df, custom_types = fetch_raw_dataframe()
+    return custom_types

@@ -139,11 +139,19 @@ def flat_part_options(org_tree: list[dict]) -> list[str]:
 def filter_by_selected_org(df: pd.DataFrame, selected_org: str) -> pd.DataFrame:
     """대시보드/상세현황의 단일선택 drill-down(selected_org)을 스코핑한다.
 
-    PJT_TOTAL_LABEL이면 전체, "PJT::파트" 복합키면 (PJT, 파트) 쌍으로, 그 외에는
-    기존처럼 PJT 단순 일치로 매칭한다.
+    PJT_TOTAL_LABEL이면 전체, 실제 `팀` 값과 일치하면 그 팀 전체(하위 PJT/파트 무관),
+    "PJT::파트" 복합키면 (PJT, 파트) 쌍으로, 그 외에는 기존처럼 PJT 단순 일치로 매칭한다.
+
+    팀 분기가 PJT 매칭보다 먼저 와야 한다 — build_org_tree()가 만드는 트리에서 팀 노드를
+    클릭하면 그 팀의 실제 이름이 그대로 selected_org로 들어오는데(OrgTree.vue), 이 분기가
+    없으면 팀명을 PJT 컬럼과 비교하게 되어 팀이 1개뿐이고 그 이름이 우연히
+    PJT_TOTAL_LABEL과 같을 때만 "동작"하는 척하는 상태가 된다(팀이 여러 개면 항상 빈 결과).
     """
     if selected_org == PJT_TOTAL_LABEL:
         return df
+
+    if selected_org in set(df[COL["team"]]):
+        return df[df[COL["team"]] == selected_org]
 
     if PART_KEY_SEP in selected_org:
         pjt, _, part = selected_org.partition(PART_KEY_SEP)

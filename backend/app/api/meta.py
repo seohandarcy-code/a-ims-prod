@@ -25,10 +25,21 @@ def get_meta(store: DataStore = Depends(get_store)) -> MetaResponse:
         part=flat_part_options(org_tree),
     )
 
+    # 팀명을 하드코딩하지 않고 데이터에서 도출한다 — 팀이 1개면 그 이름을 그대로 쓰고,
+    # 나중에 팀명이 또 바뀌거나(값만 바뀜) 팀이 여러 개로 늘어나도 코드 수정 없이
+    # 자동으로 반영된다.
+    team_names = filter_options.team
+    if len(team_names) == 1:
+        team_name = team_names[0]
+    elif team_names:
+        team_name = ", ".join(team_names)
+    else:
+        team_name = PJT_TOTAL_LABEL
+
     return MetaResponse(
         current_month=store.get_current_month(),
         current_label=store.get_current_label(),
-        team_name="A-Infra기술팀",
+        team_name=team_name,
         dashboard_title="Investment Management Dashboard '26",
         filter_options=filter_options,
         org_options=[PJT_TOTAL_LABEL] + filter_options.org,

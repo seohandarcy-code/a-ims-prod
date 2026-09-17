@@ -68,7 +68,7 @@ def test_add_column_rejects_duplicate_name():
         token = _login(client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        r = client.post("/api/v1/admin/columns", json={"name": "조직"}, headers=headers)
+        r = client.post("/api/v1/admin/columns", json={"name": "PJT"}, headers=headers)
 
     assert r.status_code == 400
 
@@ -122,7 +122,7 @@ def test_delete_fixed_column_rejected():
         token = _login(client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        r = client.delete("/api/v1/admin/columns/조직", headers=headers)
+        r = client.delete("/api/v1/admin/columns/PJT", headers=headers)
 
     assert r.status_code == 400
 

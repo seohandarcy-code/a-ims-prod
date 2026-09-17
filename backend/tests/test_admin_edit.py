@@ -1,12 +1,15 @@
-"""관리자 원본 데이터 편집(행 수정/추가) 및 rev 스냅샷 저장/재기동 로드 테스트."""
+"""관리자 원본 데이터 편집(행 수정/추가) 및 DB 저장/재기동 로드 테스트."""
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from app.config import BASE_FILE, REV_FILE
+from app.config import BASE_FILE
 from app.data.loader import read_dat
 from app.data.store import DataStore
-from app.data.writer import atomic_write_dat
+from app.db.engine import engine
+from app.db.models import investment_rows
+from app.db.seed import replace_all_from_dataframe
 from app.main import app
 
 
@@ -15,16 +18,21 @@ def _login(client: TestClient) -> str:
     return r.json()["token"]
 
 
-def test_edit_row_success_and_rev_file_written():
+def test_edit_row_success_and_persisted_to_db():
     with TestClient(app) as client:
         token = _login(client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        r = client.patch("/api/v1/admin/rows/1", json={"fields": {"조직": "테스트조직"}}, headers=headers)
+        r = client.patch("/api/v1/admin/rows/1", json={"fields": {"PJT": "테스트조직"}}, headers=headers)
 
     assert r.status_code == 200
-    assert r.json()["row"]["조직"] == "테스트조직"
-    assert REV_FILE.exists()
+    assert r.json()["row"]["PJT"] == "테스트조직"
+
+    with engine.connect() as conn:
+        stored = conn.execute(
+            select(investment_rows.c.org).where(investment_rows.c.no == 1)
+        ).scalar_one()
+    assert stored == "테스트조직"
 
 
 def test_edit_row_not_found():
@@ -32,7 +40,7 @@ def test_edit_row_not_found():
         token = _login(client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        r = client.patch("/api/v1/admin/rows/999999", json={"fields": {"조직": "x"}}, headers=headers)
+        r = client.patch("/api/v1/admin/rows/999999", json={"fields": {"PJT": "x"}}, headers=headers)
 
     assert r.status_code == 404
 
@@ -75,18 +83,19 @@ def test_add_row_autonumbers_and_allows_free_wbs_code():
     assert r2.json()["row"]["WBS_Code"] == "예정"
 
 
-def test_restart_reloads_from_rev_file():
+def test_restart_reloads_from_db():
     with TestClient(app) as client:
         token = _login(client)
         headers = {"Authorization": f"Bearer {token}"}
-        client.patch("/api/v1/admin/rows/1", json={"fields": {"조직": "재시작테스트"}}, headers=headers)
+        client.patch("/api/v1/admin/rows/1", json={"fields": {"PJT": "재시작테스트"}}, headers=headers)
 
-    # 새 DataStore 인스턴스로 서버 재기동을 시뮬레이션 - REV_FILE이 있으면 그걸 우선 로드해야 한다.
+    # 새 DataStore 인스턴스로 서버 재기동을 시뮬레이션 - 같은 DATABASE_URL을 가리키므로
+    # 편집 내용이 그대로 유지되어야 한다(이미 데이터가 있으니 재시딩되면 안 된다).
     fresh_store = DataStore()
     fresh_store.load()
     raw_df = fresh_store.get_raw_df()
 
-    edited = raw_df.loc[raw_df["NO"].astype(str) == "1", "조직"].iloc[0]
+    edited = raw_df.loc[raw_df["NO"].astype(str) == "1", "PJT"].iloc[0]
     assert edited == "재시작테스트"
 
 
@@ -115,7 +124,7 @@ def test_raw_data_reports_money_column_type_and_no_backup_initially():
     money_cols = {c["key"] for c in body["columns"] if c["type"] == "money"}
     assert "투자비" in money_cols
     status_cols = {c["key"] for c in body["columns"] if c["type"] == "status"}
-    assert "조직" in status_cols
+    assert "PJT" in status_cols
     text_cols = {c["key"] for c in body["columns"] if c["type"] == "text"}
     assert "담당자" in text_cols
 
@@ -151,7 +160,7 @@ def test_restore_backup_undoes_last_edit():
         token = _login(client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        client.patch("/api/v1/admin/rows/1", json={"fields": {"조직": "변경됨"}}, headers=headers)
+        client.patch("/api/v1/admin/rows/1", json={"fields": {"PJT": "변경됨"}}, headers=headers)
 
         raw = client.get("/api/v1/admin/raw-data", headers=headers).json()
         assert raw["has_backup"] is True
@@ -163,7 +172,7 @@ def test_restore_backup_undoes_last_edit():
 
     assert raw_after["has_backup"] is False
     row1 = next(row for row in raw_after["rows"] if row["NO"] == "1")
-    assert row1["조직"] != "변경됨"
+    assert row1["PJT"] != "변경됨"
 
 
 def test_edit_money_field_rejects_non_numeric():
@@ -233,16 +242,16 @@ def test_edit_unrelated_field_not_blocked_by_preexisting_mismatch():
     base_df = read_dat(BASE_FILE)
     base_df.loc[base_df["NO"] == "1", "기성_월"] = "1월/2월"
     base_df.loc[base_df["NO"] == "1", "기성_금액"] = "1000"
-    atomic_write_dat(base_df, REV_FILE)
+    replace_all_from_dataframe(base_df)
 
     with TestClient(app) as client:
         token = _login(client)
         headers = {"Authorization": f"Bearer {token}"}
 
-        r = client.patch("/api/v1/admin/rows/1", json={"fields": {"조직": "안전장치테스트"}}, headers=headers)
+        r = client.patch("/api/v1/admin/rows/1", json={"fields": {"PJT": "안전장치테스트"}}, headers=headers)
 
     assert r.status_code == 200
-    assert r.json()["row"]["조직"] == "안전장치테스트"
+    assert r.json()["row"]["PJT"] == "안전장치테스트"
 
 
 def test_add_row_money_field_rejects_non_numeric():
