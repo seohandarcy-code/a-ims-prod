@@ -157,3 +157,13 @@ export async function fetchAdminCsvBlob(token: string): Promise<Blob> {
   }
   return res.blob()
 }
+
+// 운영 DB 백업 스냅샷(.dat) 다운로드 — 로컬 개발 환경을 이 파일로 재시딩할 때 쓴다
+// (backend/scripts/reseed_from_dat.py --file <다운로드파일> --reset).
+export async function fetchAdminDatBlob(token: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/admin/export/dat`, { headers: authHeaders(token) })
+  if (!res.ok) {
+    throw new ApiError(res.status, `dat 다운로드 실패 (${res.status})`)
+  }
+  return res.blob()
+}

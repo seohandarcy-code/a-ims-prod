@@ -65,6 +65,15 @@
         CSV 다운로드
       </button>
 
+      <button
+        type="button"
+        class="toolbar-btn"
+        title="로컬 개발 환경 재시딩용 백업 스냅샷(backend/scripts/reseed_from_dat.py --file <이 파일> --reset)"
+        @click="handleDownloadDat"
+      >
+        dat 백업 다운로드
+      </button>
+
       <template v-if="confirmingRestore">
         <span class="confirm-text">직전 상태로 되돌릴까요?</span>
         <button
@@ -171,6 +180,7 @@ const {
   addColumn,
   deleteColumn,
   downloadCsv,
+  downloadDat,
 } = useAdminRawData()
 
 const panelMode = ref<'add' | 'edit' | null>(null)
@@ -254,6 +264,10 @@ async function handleDeleteColumn(key: string): Promise<void> {
 
 async function handleDownload(): Promise<void> {
   await downloadCsv()
+}
+
+async function handleDownloadDat(): Promise<void> {
+  await downloadDat()
 }
 
 onMounted(load)

@@ -6,6 +6,7 @@ import {
   deleteAdminRow,
   editAdminRow,
   fetchAdminCsvBlob,
+  fetchAdminDatBlob,
   fetchAdminRawData,
   restoreAdminBackup,
 } from '../api/client'
@@ -134,6 +135,17 @@ export function useAdminRawData() {
     URL.revokeObjectURL(url)
   }
 
+  async function downloadDat(): Promise<void> {
+    if (!token.value) return
+    const blob = await fetchAdminDatBlob(token.value)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'investment_backup.dat'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return {
     data,
     loading,
@@ -146,5 +158,6 @@ export function useAdminRawData() {
     addColumn,
     deleteColumn,
     downloadCsv,
+    downloadDat,
   }
 }
