@@ -25,7 +25,7 @@ from fastapi.responses import RedirectResponse
 
 from app.api.deps import require_admin
 from app.auth import access_store
-from app.auth.oidc import is_allowed_by_claims, oauth
+from app.auth.oidc import SSO_BROKER_CONFIGURED, is_allowed_by_claims, oauth
 from app.auth.state import (
     AccountLockedError,
     InvalidCredentialsError,
@@ -80,7 +80,11 @@ def get_auth_mode() -> AuthModeResponse:
     """완전 공개 엔드포인트 — 프론트가 로그인 여부를 판단하기 이전에 지금이 로그인
     게이트가 필요한 모드인지부터 알아야 하는 닭-달걀 문제를 푼다(/meta는 sso 모드에서
     require_viewer로 막혀 있어 로그인 전에는 못 부른다)."""
-    return AuthModeResponse(auth_mode=AUTH_MODE, sso_allow_local_login=SSO_ALLOW_LOCAL_LOGIN)
+    return AuthModeResponse(
+        auth_mode=AUTH_MODE,
+        sso_allow_local_login=SSO_ALLOW_LOCAL_LOGIN,
+        sso_broker_configured=SSO_BROKER_CONFIGURED,
+    )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -128,6 +132,15 @@ async def sso_login(request: Request, silent: bool = Query(default=False)) -> Re
     화면으로 안내할지 판단할 수 있게 한다.
     """
     _require_auth_mode("sso")
+    if not SSO_BROKER_CONFIGURED:
+        # oauth.sso가 아예 등록 안 돼 있어(SSO_ISSUER_URL/CLIENT_ID/SECRET 중
+        # 하나라도 비어있음) 호출하면 AttributeError로 죽는다 — 깨끗한 에러로
+        # 대체한다. SSO_ALLOW_LOCAL_LOGIN=true인 동안 프론트가 이 경로를 아예
+        # 안 타도록 막아주지만(App.vue), 방어적으로 여기서도 막는다.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="SSO 브로커가 아직 설정되지 않았습니다(SSO_ISSUER_URL/SSO_CLIENT_ID/SSO_CLIENT_SECRET 필요).",
+        )
     request.session["sso_silent_attempt"] = silent
     kwargs = {"prompt": "none"} if silent else {}
     return await oauth.sso.authorize_redirect(request, SSO_REDIRECT_URI, **kwargs)
@@ -136,6 +149,11 @@ async def sso_login(request: Request, silent: bool = Query(default=False)) -> Re
 @router.get("/sso/callback")
 async def sso_callback(request: Request) -> RedirectResponse:
     _require_auth_mode("sso")
+    if not SSO_BROKER_CONFIGURED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="SSO 브로커가 아직 설정되지 않았습니다(SSO_ISSUER_URL/SSO_CLIENT_ID/SSO_CLIENT_SECRET 필요).",
+        )
 
     was_silent = request.session.pop("sso_silent_attempt", False)
 

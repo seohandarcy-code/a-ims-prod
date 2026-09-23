@@ -28,3 +28,4 @@ class StatusResponse(BaseModel):
 class AuthModeResponse(BaseModel):
     auth_mode: str
     sso_allow_local_login: bool = False
+    sso_broker_configured: bool = False

@@ -174,15 +174,24 @@ const authMode = ref<'local' | 'sso' | null>(null)
 // AUTH_MODE=sso에서도 브로커 client_id 발급 전 부트스트랩용으로 기존 로컬
 // 비밀번호 로그인을 같이 열어둘지(app/config.py의 SSO_ALLOW_LOCAL_LOGIN).
 const ssoAllowLocalLogin = ref(false)
+// 브로커 client_id 등이 아직 설정 안 돼 있으면(app/auth/oidc.py의
+// SSO_BROKER_CONFIGURED) oauth.sso 자체가 없어 /sso/login이 죽는다 — 이 값이
+// false면 조용한 재인증 시도 자체를 걸지 않는다(아래 onMounted).
+const ssoBrokerConfigured = ref(false)
 const fallbackUsername = ref('admin')
 const fallbackPassword = ref('')
 
 const canShowDashboard = computed(() => authMode.value === 'local' || (authMode.value === 'sso' && isAuthed.value))
-// sso 모드에서 조용한 재인증(prompt=none)이 이미 "IdP 세션 없음"으로 끝난 뒤에만
-// 수동 로그인 버튼을 보여준다 — 그 전(첫 로드, 아직 시도 전)에는 "확인 중" 문구만
-// 보여주고 곧바로 조용한 시도를 건다(아래 onMounted).
+// sso 모드에서 조용한 재인증(prompt=none)이 이미 "IdP 세션 없음"으로 끝났거나
+// (ssoRequired), 애초에 브로커가 설정 안 돼 있어 시도할 필요가 없었으면
+// (!ssoBrokerConfigured) 수동 로그인 게이트를 보여준다 — 그 전(첫 로드, 아직
+// 시도 전)에는 "확인 중" 문구만 보여주고 곧바로 조용한 시도를 건다(아래 onMounted).
 const showLoginGate = computed(
-  () => authMode.value === 'sso' && !isAuthed.value && ssoRequired.value && !accessDenied.value,
+  () =>
+    authMode.value === 'sso' &&
+    !isAuthed.value &&
+    (ssoRequired.value || !ssoBrokerConfigured.value) &&
+    !accessDenied.value,
 )
 // 로그인은 됐지만(팀/이름을 아는) sso 모드일 때만 우측 상단 접속자 정보를 보여준다.
 // local 모드는 개인별 계정 개념이 없어 표시할 게 없다.
@@ -208,6 +217,7 @@ onMounted(async () => {
   const modeRes = await fetchAuthMode()
   authMode.value = modeRes.auth_mode
   ssoAllowLocalLogin.value = modeRes.sso_allow_local_login
+  ssoBrokerConfigured.value = modeRes.sso_broker_configured
 
   if (authMode.value !== 'sso') {
     await loadMeta()
@@ -223,6 +233,13 @@ onMounted(async () => {
     // 조용한 시도가 이미 실패로 끝났거나(ssoRequired) 미등록 계정으로 거부된
     // 상태(accessDenied) — 둘 다 재시도하지 않는다(자동 재시도하면 리다이렉트
     // 루프가 되거나, 매번 같은 거부 화면으로 왕복만 반복하게 된다).
+    return
+  }
+
+  if (!ssoBrokerConfigured.value) {
+    // 브로커 client_id 등이 아직 없으면 조용한 시도 자체가 무조건 실패(서버
+    // 에러)하므로 아예 시도하지 않고 바로 게이트를 보여준다 — SSO_ALLOW_LOCAL_LOGIN이
+    // 켜져 있으면 여기서 로컬 로그인 폼을 바로 볼 수 있다.
     return
   }
 

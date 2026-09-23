@@ -12,9 +12,11 @@ from authlib.integrations.starlette_client import OAuth
 
 from app.config import SSO_CLIENT_ID, SSO_CLIENT_SECRET, SSO_ISSUER_URL
 
+SSO_BROKER_CONFIGURED = bool(SSO_ISSUER_URL and SSO_CLIENT_ID and SSO_CLIENT_SECRET)
+
 oauth = OAuth()
 
-if SSO_ISSUER_URL and SSO_CLIENT_ID and SSO_CLIENT_SECRET:
+if SSO_BROKER_CONFIGURED:
     oauth.register(
         name="sso",
         server_metadata_url=f"{SSO_ISSUER_URL.rstrip('/')}/.well-known/openid-configuration",

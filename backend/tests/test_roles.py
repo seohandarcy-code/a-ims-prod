@@ -63,6 +63,7 @@ def test_sso_callback_assigns_admin_role_via_breakglass_allowlist(monkeypatch: p
     """SSO_ADMIN_ALLOWLIST에 매칭되면 allowed_users에 미리 등록돼 있지 않아도
     로그인할 때마다 admin으로 자동 등록/복구된다(브레이크글래스)."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
     monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
     monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
 
@@ -82,6 +83,7 @@ def test_sso_callback_redirects_to_frontend_base_url_when_set(monkeypatch: pytes
     """프론트/백엔드가 다른 도메인이면 FRONTEND_BASE_URL을 채워 콜백이 백엔드
     자기 자신이 아니라 프론트의 실제 도메인으로 돌아가게 한다."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
     monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
     monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
     monkeypatch.setattr("app.api.auth.FRONTEND_BASE_URL", "https://ims.example.com")
@@ -101,6 +103,7 @@ def test_sso_callback_assigns_user_role_for_registered_non_admin(monkeypatch: py
     access_store.create("someone-else@example.com", "Someone Else", "TeamX", is_admin=False)
 
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
     monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
     monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
 
@@ -119,6 +122,7 @@ def test_sso_callback_rejects_unregistered_account(monkeypatch: pytest.MonkeyPat
     """allowed_users에 없고 브레이크글래스 목록에도 없으면, IdP 인증에 성공해도
     로그인(세션 발급) 자체가 거부된다 — access_denied로 리다이렉트."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
     monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
     monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
 
@@ -137,6 +141,7 @@ def test_sso_callback_silent_failure_redirects_to_sso_required(monkeypatch: pyte
     from authlib.integrations.base_client import OAuthError
 
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
 
     mock_sso = AsyncMock()
     mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
@@ -157,6 +162,7 @@ def test_sso_callback_non_silent_failure_returns_401(monkeypatch: pytest.MonkeyP
     from authlib.integrations.base_client import OAuthError
 
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
 
     mock_sso = AsyncMock()
     mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
@@ -206,9 +212,38 @@ def test_local_login_allowed_in_sso_mode_with_flag(monkeypatch: pytest.MonkeyPat
 def test_auth_mode_endpoint_reports_local_login_flag(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_ALLOW_LOCAL_LOGIN", True)
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", False)
 
     with TestClient(app) as client:
         r = client.get("/api/v1/auth/mode")
 
     assert r.status_code == 200
-    assert r.json() == {"auth_mode": "sso", "sso_allow_local_login": True}
+    assert r.json() == {
+        "auth_mode": "sso",
+        "sso_allow_local_login": True,
+        "sso_broker_configured": False,
+    }
+
+
+def test_sso_login_returns_503_when_broker_not_configured(monkeypatch: pytest.MonkeyPatch):
+    """SSO_ISSUER_URL/CLIENT_ID/SECRET 중 하나라도 비어있으면 oauth.sso가 아예
+    등록되지 않는다 — 이때 /sso/login을 호출하면 AttributeError로 죽는 대신
+    깨끗한 503을 줘야 한다(SSO_ALLOW_LOCAL_LOGIN 부트스트랩 중 실제로 겪은 버그 —
+    App.vue가 첫 로드에 조용한 재인증을 시도하다 여기서 크래시했었다)."""
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", False)
+
+    with TestClient(app) as client:
+        r = client.get("/api/v1/auth/sso/login", follow_redirects=False)
+
+    assert r.status_code == 503
+
+
+def test_sso_callback_returns_503_when_broker_not_configured(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", False)
+
+    with TestClient(app) as client:
+        r = client.get("/api/v1/auth/sso/callback", follow_redirects=False)
+
+    assert r.status_code == 503
