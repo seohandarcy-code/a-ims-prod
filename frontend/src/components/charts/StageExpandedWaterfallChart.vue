@@ -14,15 +14,17 @@
           <span class="axis-total-value">{{ (totalItem?.count ?? 0).toLocaleString() }}건</span>
         </div>
         <div
-          class="drop-chip"
-          :class="{ active: selectedKey === 'drop' }"
+          v-for="chip in sideChips"
+          :key="chip.key"
+          class="side-chip"
+          :class="{ active: selectedKey === chip.key }"
           role="button"
           tabindex="0"
-          @click="emit('select', 'drop')"
-          @keydown.enter="emit('select', 'drop')"
+          @click="emit('select', chip.key)"
+          @keydown.enter="emit('select', chip.key)"
         >
-          <span class="lbl">Drop</span>
-          <b class="val">{{ dropCount.toLocaleString() }}건</b>
+          <span class="lbl">{{ chip.label }}</span>
+          <b class="val">{{ chip.count.toLocaleString() }}건</b>
         </div>
         <span class="axis-zero">0</span>
       </div>
@@ -190,8 +192,9 @@ const GROUP_LABEL_BY_GROUP: Record<string, GroupLabel> = {
   settle: { key: 'investment_done', label: '투자 완료', color: STAGE.execution, wash: 'var(--stage-execution-wash)' },
 }
 
-// Drop은 막대로 그리지 않고 좌측 축 영역에 별도 칩으로 표시한다(2026-08-11 오너 요청).
-const HIDDEN_BAR_KEYS = new Set(['drop'])
+// Drop/타팀이관은 막대로 그리지 않고 좌측 축 영역에 별도 칩으로 표시한다(2026-08-11
+// 오너 요청, 2026-09-22 타팀이관 추가).
+const HIDDEN_BAR_KEYS = new Set(['drop', 'team_transfer'])
 // 이탈(미완료) 항목 판정을 배열의 "마지막 인덱스"가 아니라 key 집합으로 고정한다 — Drop을
 // plan 클러스터 배열에서 아예 빼버리면 plan_out이 새 마지막 항목이 되어 기존의 인덱스 기반
 // 판정으로는 잘못 회색/이탈 처리되기 때문(2026-08-11 frontend-dev 검토에서 확인된 실제 버그 위험).
@@ -229,7 +232,13 @@ function groupLabelCount(key: string): number {
   return props.items.find((i) => i.key === key)?.count ?? 0
 }
 
-const dropCount = computed(() => groupLabelCount('drop'))
+// HIDDEN_BAR_KEYS에 속한 항목을 props.items(FUNNEL_ITEMS) 순서 그대로 칩으로 그린다 —
+// 타팀이관/Drop 순서는 백엔드 FUNNEL_ITEMS 배열 순서가 그대로 결정한다.
+const sideChips = computed(() =>
+  props.items
+    .filter((item) => HIDDEN_BAR_KEYS.has(item.key))
+    .map((item) => ({ key: item.key, label: item.label, count: item.count })),
+)
 
 // 라벨을 공백 기준으로 줄바꿈한다 — 열 너비에 따라 자연 줄바꿈 여부가 갈리면(예: "팀장 심의"는
 // 1줄, "센터장 심의"는 2줄) 같은 행 안에서 통일감이 깨진다. 두 단어짜리 라벨은 항상 2줄로
@@ -389,10 +398,11 @@ watch(
   font-variant-numeric: tabular-nums;
 }
 
-/* Drop 막대를 없애고 이 칩으로 대체한다(2026-08-11 오너 요청) — 이탈 막대와 동일한
-   trailing-gray를 그대로 유지해 "회색=이탈/미완료" 색 언어를 지키되, 테두리를 없애고
-   값 글자 크기를 전체 투자계획보다 한 단계 작게 둬 부속 정보임을 드러낸다. */
-.drop-chip {
+/* Drop/타팀이관 막대를 없애고 이 칩으로 대체한다(2026-08-11 오너 요청, 2026-09-22
+   타팀이관 추가로 일반화) — 이탈 막대와 동일한 trailing-gray를 그대로 유지해
+   "회색=이탈/미완료" 색 언어를 지키되, 테두리를 없애고 값 글자 크기를 전체
+   투자계획보다 한 단계 작게 둬 부속 정보임을 드러낸다. */
+.side-chip {
   display: flex;
   align-items: baseline;
   gap: 0.3rem;
@@ -404,23 +414,23 @@ watch(
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.drop-chip:hover {
+.side-chip:hover {
   border-color: var(--text-subtle);
 }
 
-.drop-chip.active {
+.side-chip.active {
   border-color: var(--text-main);
   box-shadow: inset 0 0 0 1px var(--text-main);
 }
 
-.drop-chip .lbl {
+.side-chip .lbl {
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--text-subtle);
   white-space: nowrap;
 }
 
-.drop-chip .val {
+.side-chip .val {
   font-size: 0.82rem;
   font-weight: 800;
   color: var(--text-muted);

@@ -39,7 +39,7 @@
           <tr
             v-for="row in sortedRows"
             :key="String(row.no)"
-            :class="{ 'row-dropped': row.plan_type === 'Drop' }"
+            :class="{ 'row-dropped': isDroppedRow(row) }"
           >
             <td
               v-for="col in columns"
@@ -91,6 +91,12 @@ const props = defineProps<{
   searchKeys: string[]
   rows: Record<string, unknown>[]
 }>()
+
+// Drop/타팀이관 행은 동일하게 회색으로 표시한다(2026-09-22 타팀이관 추가).
+const DROPPED_PLAN_TYPES = new Set(['Drop', '타팀이관'])
+function isDroppedRow(row: Record<string, unknown>): boolean {
+  return DROPPED_PLAN_TYPES.has(String(row.plan_type ?? ''))
+}
 
 const search = ref('')
 

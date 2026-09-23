@@ -128,8 +128,8 @@ export function login(payload: LoginRequest): Promise<LoginResponse> {
 // 프론트가 로그인 여부를 판단하기 이전에 지금이 로그인 게이트가 필요한 모드인지부터
 // 알아야 하는 완전 공개 엔드포인트(/meta는 sso 모드에서 게이트돼 있어 로그인 전에는
 // 못 부른다).
-export function fetchAuthMode(): Promise<{ auth_mode: 'local' | 'sso' }> {
-  return getJson<{ auth_mode: 'local' | 'sso' }>(`${API_BASE}/auth/mode`)
+export function fetchAuthMode(): Promise<{ auth_mode: 'local' | 'sso'; sso_allow_local_login: boolean }> {
+  return getJson<{ auth_mode: 'local' | 'sso'; sso_allow_local_login: boolean }>(`${API_BASE}/auth/mode`)
 }
 
 // SSO 로그인은 fetch가 아니라 실제 페이지 이동으로 시작해야 한다(IdP 리다이렉트를

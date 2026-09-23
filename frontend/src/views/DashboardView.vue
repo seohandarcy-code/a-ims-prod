@@ -138,7 +138,7 @@ const kpiCards = computed<MiniKpiCard[]>(() => {
         number: (k.invest_sum / 100_000_000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
         unit: '억',
       },
-      caption: '계획 + 계획외 + Drop',
+      caption: '계획 + 계획외 + 타팀이관 + Drop',
       tone: 'total',
       emphasizeValue: true,
     },
@@ -209,7 +209,7 @@ const kpiCards = computed<MiniKpiCard[]>(() => {
 
 const monthLabels = computed(() => data.value?.monthly_flow.map((m) => String(m['월표시'])) ?? [])
 
-// 전체 투자계획 금액(계획+계획외+Drop) 기준선 — 상단 KPI "전체 투자계획" 카드와 동일한 값.
+// 전체 투자계획 금액(계획+계획외+타팀이관+Drop) 기준선 — 상단 KPI "전체 투자계획" 카드와 동일한 값.
 const NEUTRAL_LINE = '#595870'
 
 const monthlyLines = computed<ComboLineSeries[]>(() => {

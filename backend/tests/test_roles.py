@@ -170,3 +170,45 @@ def test_sso_callback_non_silent_failure_returns_401(monkeypatch: pytest.MonkeyP
         callback_res = client.get("/api/v1/auth/sso/callback", follow_redirects=False)
 
     assert callback_res.status_code == 401
+
+
+def test_local_login_blocked_in_sso_mode_by_default(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+
+    with TestClient(app) as client:
+        r = client.post("/api/v1/auth/login", json={"username": "admin", "password": "0000"})
+
+    assert r.status_code == 400
+
+
+def test_local_login_allowed_in_sso_mode_with_flag(monkeypatch: pytest.MonkeyPatch):
+    """브로커 client_id 발급 전, SSO_ALLOW_LOCAL_LOGIN=true면 기존 로컬 로그인으로
+    부트스트랩할 수 있어야 한다 — 그 세션으로 require_viewer/require_admin이 걸린
+    엔드포인트에도 정상 접근돼야 한다."""
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_ALLOW_LOCAL_LOGIN", True)
+    monkeypatch.setattr("app.api.deps.AUTH_MODE", "sso")
+
+    with TestClient(app) as client:
+        r = client.post("/api/v1/auth/login", json={"username": "admin", "password": "0000"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["role"] == "admin"
+        headers = {"Authorization": f"Bearer {body['token']}"}
+
+        r = client.get("/api/v1/meta", headers=headers)
+        assert r.status_code == 200
+
+        r = client.get("/api/v1/admin/raw-data", headers=headers)
+        assert r.status_code == 200
+
+
+def test_auth_mode_endpoint_reports_local_login_flag(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_ALLOW_LOCAL_LOGIN", True)
+
+    with TestClient(app) as client:
+        r = client.get("/api/v1/auth/mode")
+
+    assert r.status_code == 200
+    assert r.json() == {"auth_mode": "sso", "sso_allow_local_login": True}

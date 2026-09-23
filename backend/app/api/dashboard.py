@@ -59,8 +59,11 @@ def get_dashboard(
             | detail_rows_df[COL["leader_plan_month"]].map(lambda v: extract_month(v) == month_key)
         ]
 
-    # "전체 투자계획"(계획+계획외+Drop)과 "진행 투자계획"(Drop 제외 계획+계획외) KPI 카드용 스코프.
-    plan_total_df = detail_filtered_df[detail_filtered_df[COL["plan_type"]].isin(["계획", "계획외", "Drop"])]
+    # "전체 투자계획"(계획+계획외+타팀이관+Drop)과 "진행 투자계획"(타팀이관/Drop 제외
+    # 계획+계획외) KPI 카드용 스코프.
+    plan_total_df = detail_filtered_df[
+        detail_filtered_df[COL["plan_type"]].isin(["계획", "계획외", "타팀이관", "Drop"])
+    ]
     plan_progress_df = detail_filtered_df[detail_filtered_df[COL["plan_type"]].isin(["계획", "계획외"])]
 
     # "심의 완료"(센터장_심의필요='필요'면 센터장 심의, 아니면 팀장 심의 승인 기준) KPI 카드용 스코프.

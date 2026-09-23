@@ -1,9 +1,11 @@
 """관리자 로그인/로그아웃/비밀번호 변경 API.
 
 AUTH_MODE=local(기본값)에서는 지금까지와 100% 동일하게 동작한다. AUTH_MODE=sso일
-때는 /login·/change-password 대신 /sso/login·/sso/callback으로 로그인한다 —
-어느 쪽이든 최종적으로 AdminAuthStore가 세션을 발급하므로 require_admin/admin.py는
-이 스위치를 전혀 모른다.
+때는 기본적으로 /login·/change-password 대신 /sso/login·/sso/callback으로
+로그인한다 — 다만 SSO_ALLOW_LOCAL_LOGIN=true면 /login·/change-password도 같이
+열려서(브로커 client_id 발급 전 부트스트랩용, app/config.py 참고) 두 경로가
+공존할 수 있다. 어느 쪽이든 최종적으로 AdminAuthStore가 세션을 발급하므로
+require_admin/admin.py는 이 스위치를 전혀 모른다.
 
 sso 모드에서는 IdP 인증에 성공해도 app/auth/access_store.py의 allowed_users
 테이블에 등록돼 있지 않으면 로그인(세션 발급) 자체가 거부된다 — "SSO 인증 성공 =
@@ -34,6 +36,7 @@ from app.config import (
     AUTH_MODE,
     FRONTEND_BASE_URL,
     SSO_ADMIN_ALLOWLIST,
+    SSO_ALLOW_LOCAL_LOGIN,
     SSO_REDIRECT_URI,
     SSO_USER_ID_CLAIM,
 )
@@ -57,17 +60,32 @@ def _require_auth_mode(expected: str) -> None:
         )
 
 
+def _require_local_login_allowed() -> None:
+    """/login·/change-password 게이트. local 모드는 지금까지처럼 항상 허용하고,
+    sso 모드는 SSO_ALLOW_LOCAL_LOGIN이 켜져 있을 때만 허용한다(브로커
+    SSO_CLIENT_ID 발급 전, 관리자가 비밀번호로 먼저 들어가 접근 권한을
+    등록해둘 수 있게 하는 부트스트랩용 — app/config.py 참고)."""
+    if AUTH_MODE == "local":
+        return
+    if AUTH_MODE == "sso" and SSO_ALLOW_LOCAL_LOGIN:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"현재 인증 모드({AUTH_MODE})에서는 사용할 수 없습니다.",
+    )
+
+
 @router.get("/mode", response_model=AuthModeResponse)
 def get_auth_mode() -> AuthModeResponse:
     """완전 공개 엔드포인트 — 프론트가 로그인 여부를 판단하기 이전에 지금이 로그인
     게이트가 필요한 모드인지부터 알아야 하는 닭-달걀 문제를 푼다(/meta는 sso 모드에서
     require_viewer로 막혀 있어 로그인 전에는 못 부른다)."""
-    return AuthModeResponse(auth_mode=AUTH_MODE)
+    return AuthModeResponse(auth_mode=AUTH_MODE, sso_allow_local_login=SSO_ALLOW_LOCAL_LOGIN)
 
 
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest) -> LoginResponse:
-    _require_auth_mode("local")
+    _require_local_login_allowed()
 
     try:
         token, expires_in = get_auth_store().login(payload.username, payload.password)
@@ -90,7 +108,7 @@ def change_password(
     payload: ChangePasswordRequest,
     token: str = Depends(require_admin),
 ) -> StatusResponse:
-    _require_auth_mode("local")
+    _require_local_login_allowed()
 
     try:
         get_auth_store().change_password(token, payload.current_password, payload.new_password)

@@ -97,6 +97,16 @@ SSO_ADMIN_ALLOWLIST = [
 # 사번/UPN 등 안정적인 고유 식별자를 쓰는 클레임으로 맞춘다.
 SSO_USER_ID_CLAIM = os.getenv("SSO_USER_ID_CLAIM", "").strip() or "email"
 
+# AUTH_MODE=sso에서도 기존 로컬 비밀번호 로그인(/login)을 부트스트랩용으로 같이
+# 열어둔다 — 브로커가 SSO_CLIENT_ID를 아직 발급하지 않아 실제 SSO 로그인이
+# 불가능한 개발 단계에서, 관리자가 비밀번호로 먼저 들어가 "접근 권한 관리"
+# 화면에 SSO 계정들을 등록해둘 수 있게 한다(client_id가 생기면 실제 SSO
+# 버튼으로 그 등록이 제대로 작동하는지 검증). 새 인증 경로를 만드는 대신 이미
+# 검증된 로컬 로그인을 그대로 재사용한다. 기본값 false — 공유 서버에서 켤
+# 거면 ADMIN_BOOTSTRAP_PASSWORD를 반드시 기본값("0000")에서 바꿀 것(안 그러면
+# SSO 게이트를 잘 알려진 비밀번호로 그냥 우회할 수 있게 된다).
+SSO_ALLOW_LOCAL_LOGIN = os.getenv("SSO_ALLOW_LOCAL_LOGIN", "").strip().lower() == "true"
+
 # OAuth state/nonce를 담는 Starlette SessionMiddleware 서명 키. 이 세션은 로그인
 # 리다이렉트가 왕복하는 짧은 시간에만 쓰이므로(로그인 자체의 세션이 아님 —
 # 그건 AdminAuthStore가 별도 관리), 로컬 dev에서는 비워두면 프로세스 기동마다

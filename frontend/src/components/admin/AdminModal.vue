@@ -58,7 +58,7 @@
               전체 데이터
             </button>
             <button
-              v-if="authMode === 'local'"
+              v-if="showPasswordTab"
               type="button"
               class="admin-tab"
               :class="{ active: activeTab === 'password' }"
@@ -103,10 +103,15 @@ import AdminDataPanel from './AdminDataPanel.vue'
 import AdminLoginForm from './AdminLoginForm.vue'
 import AdminPasswordForm from './AdminPasswordForm.vue'
 
-const { modalOpen, isAuthed, logout } = useAdminAuth()
+const { modalOpen, isAuthed, logout, userName } = useAdminAuth()
 const { meta } = useFilters()
 
 const authMode = computed(() => meta.value?.auth_mode ?? 'local')
+// 로컬 비밀번호로 들어온 세션(SSO_ALLOW_LOCAL_LOGIN 부트스트랩 포함)은 자기
+// 비밀번호를 바꿀 수 있어야 한다. 실제 SSO 콜백은 항상 userName을 채워주므로,
+// userName이 없다는 게 "비밀번호로 로그인했다"는 신호가 된다(local 모드는
+// 애초에 userName 개념이 없어 항상 해당).
+const showPasswordTab = computed(() => authMode.value === 'local' || !userName.value)
 
 const activeTab = ref<'data' | 'password' | 'access'>('data')
 const dialogRef = ref<HTMLDivElement | null>(null)

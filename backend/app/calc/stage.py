@@ -55,7 +55,7 @@ def make_stage_summary(df: pd.DataFrame) -> dict[str, float]:
 
 
 FUNNEL_MASK_KEYS = (
-    "plan", "plan_out", "drop", "progress",
+    "plan", "plan_out", "team_transfer", "drop", "progress",
     "leader_review", "center_review", "review_incomplete", "review_done",
     "erp", "irb_path", "contract_pending", "contract_done",
     "settled", "unsettled",
@@ -76,6 +76,7 @@ def _funnel_masks(df: pd.DataFrame) -> dict[str, pd.Series]:
     plan_type = s("plan_type")
     plan_mask = plan_type == "계획"
     plan_out_mask = plan_type == "계획외"
+    team_transfer_mask = plan_type == "타팀이관"
     drop_mask = plan_type == "Drop"
     progress_mask = plan_mask | plan_out_mask
 
@@ -96,6 +97,7 @@ def _funnel_masks(df: pd.DataFrame) -> dict[str, pd.Series]:
     return {
         "plan": plan_mask,
         "plan_out": plan_out_mask,
+        "team_transfer": team_transfer_mask,
         "drop": drop_mask,
         "progress": progress_mask,
         "leader_review": leader_review_mask,
@@ -149,6 +151,7 @@ FUNNEL_ITEMS: list[tuple[str, str, str, str]] = [
     ("total", "전체 투자계획", "checkpoint", "plan"),
     ("plan", "계획", "component", "plan"),
     ("plan_out", "계획외", "component", "plan"),
+    ("team_transfer", "타팀이관", "component", "plan"),
     ("drop", "Drop", "component", "plan"),
     ("progress", "진행 투자계획", "checkpoint", "plan"),
     ("leader_review", "팀장 심의완료", "component", "review"),
@@ -177,11 +180,14 @@ def make_progress_funnel(df: pd.DataFrame) -> list[dict]:
         counts = dict.fromkeys(["total", *FUNNEL_MASK_KEYS], 0)
     else:
         masks = _funnel_masks(df)
-        # "total"(전체 투자계획)은 len(df)가 아니라 계획/계획외/Drop 마스크의 합으로 센다 —
-        # 종합현황 KPI "전체 투자계획" 카드(plan_type.isin(["계획","계획외","Drop"]))와 동일
-        # 기준이어야, 계획구분이 이 3개 값이 아닌 행(공백 등)이 있어도 두 수치가 항상 일치한다
-        # (2026-08-11 오너 피드백 — 퍼널의 total과 KPI 카드 숫자가 서로 달라 보이는 문제).
-        plan_total_count = int((masks["plan"] | masks["plan_out"] | masks["drop"]).sum())
+        # "total"(전체 투자계획)은 len(df)가 아니라 계획/계획외/타팀이관/Drop 마스크의 합으로
+        # 센다 — 종합현황 KPI "전체 투자계획" 카드
+        # (plan_type.isin(["계획","계획외","타팀이관","Drop"]))와 동일 기준이어야, 계획구분이
+        # 이 값들이 아닌 행(공백 등)이 있어도 두 수치가 항상 일치한다(2026-08-11 오너 피드백 —
+        # 퍼널의 total과 KPI 카드 숫자가 서로 달라 보이는 문제).
+        plan_total_count = int(
+            (masks["plan"] | masks["plan_out"] | masks["team_transfer"] | masks["drop"]).sum()
+        )
         counts = {"total": plan_total_count, **{key: int(mask.sum()) for key, mask in masks.items()}}
 
     return [

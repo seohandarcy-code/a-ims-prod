@@ -3,7 +3,7 @@
     <header class="page-header">
       <div class="page-header-main">
         <p class="small-title">
-          {{ meta?.team_name ?? '인프라AX/PI기술팀' }}
+          {{ meta?.team_name ?? '인프라AX/PI팀' }}
         </p>
         <h1 class="big-title">
           {{ meta?.dashboard_title ?? "Investment Management Dashboard '26" }}
@@ -77,6 +77,41 @@
       >
         회사 계정으로 로그인
       </button>
+
+      <form
+        v-if="ssoAllowLocalLogin"
+        class="local-fallback-form"
+        @submit.prevent="handleLocalFallbackLogin"
+      >
+        <p class="local-fallback-desc">
+          브로커 연동 전 임시 — 관리자 비밀번호로 로그인
+        </p>
+        <input
+          v-model="fallbackUsername"
+          type="text"
+          placeholder="아이디"
+          autocomplete="username"
+        >
+        <input
+          v-model="fallbackPassword"
+          type="password"
+          placeholder="비밀번호"
+          autocomplete="current-password"
+        >
+        <p
+          v-if="authError"
+          class="local-fallback-error"
+        >
+          {{ authError }}
+        </p>
+        <button
+          type="submit"
+          class="local-fallback-btn"
+          :disabled="authLoading"
+        >
+          {{ authLoading ? '로그인 중...' : '관리자 비밀번호로 로그인' }}
+        </button>
+      </form>
     </div>
 
     <div
@@ -103,8 +138,19 @@ import DashboardView from './views/DashboardView.vue'
 import StatusDetailView from './views/StatusDetailView.vue'
 
 const { meta, loadMeta } = useFilters()
-const { token, isAuthed, isAdmin, userName, userTeam, ssoRequired, accessDenied, consumeSsoCallbackToken } =
-  useAdminAuth()
+const {
+  token,
+  isAuthed,
+  isAdmin,
+  userName,
+  userTeam,
+  ssoRequired,
+  accessDenied,
+  authLoading,
+  authError,
+  login,
+  consumeSsoCallbackToken,
+} = useAdminAuth()
 
 // 투자 진행 상세현황 탭은 2026-08-11 오너 요청으로 숨김 처리한다 — 코드/라우팅(?tab=status-detail)은
 // 그대로 두고 탭 바에서만 감춘다(추후 재노출 시 hidden만 제거하면 됨).
@@ -125,6 +171,11 @@ const sidebarOpen = ref(false)
 // null = 아직 /auth/mode 응답을 못 받음(부팅 초기). local이면 지금까지처럼 대시보드가
 // 항상 공개고, sso면 로그인 세션이 있어야만 대시보드를 그릴 수 있다.
 const authMode = ref<'local' | 'sso' | null>(null)
+// AUTH_MODE=sso에서도 브로커 client_id 발급 전 부트스트랩용으로 기존 로컬
+// 비밀번호 로그인을 같이 열어둘지(app/config.py의 SSO_ALLOW_LOCAL_LOGIN).
+const ssoAllowLocalLogin = ref(false)
+const fallbackUsername = ref('admin')
+const fallbackPassword = ref('')
 
 const canShowDashboard = computed(() => authMode.value === 'local' || (authMode.value === 'sso' && isAuthed.value))
 // sso 모드에서 조용한 재인증(prompt=none)이 이미 "IdP 세션 없음"으로 끝난 뒤에만
@@ -135,10 +186,20 @@ const showLoginGate = computed(
 )
 // 로그인은 됐지만(팀/이름을 아는) sso 모드일 때만 우측 상단 접속자 정보를 보여준다.
 // local 모드는 개인별 계정 개념이 없어 표시할 게 없다.
-const showUserBadge = computed(() => authMode.value === 'sso' && canShowDashboard.value)
+// 로컬 비밀번호 폴백 로그인(SSO_ALLOW_LOCAL_LOGIN)은 userName을 안 채우므로,
+// 실제 SSO로 들어온 세션에서만 배지를 보여준다(둘 다 "관리자"로 보이면 헷갈림).
+const showUserBadge = computed(() => authMode.value === 'sso' && canShowDashboard.value && !!userName.value)
 
 function goToInteractiveLogin(): void {
   window.location.href = SSO_LOGIN_URL
+}
+
+async function handleLocalFallbackLogin(): Promise<void> {
+  const ok = await login(fallbackUsername.value, fallbackPassword.value)
+  if (ok) {
+    fallbackPassword.value = ''
+    await loadMeta(token.value ?? undefined)
+  }
 }
 
 onMounted(async () => {
@@ -146,6 +207,7 @@ onMounted(async () => {
 
   const modeRes = await fetchAuthMode()
   authMode.value = modeRes.auth_mode
+  ssoAllowLocalLogin.value = modeRes.sso_allow_local_login
 
   if (authMode.value !== 'sso') {
     await loadMeta()
@@ -283,5 +345,54 @@ onMounted(async () => {
   font-size: 1.05rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+.local-fallback-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1.2rem;
+  border-top: 1px dashed var(--border-color);
+  width: 100%;
+  max-width: 260px;
+}
+
+.local-fallback-desc {
+  font-size: 0.8rem;
+  color: var(--text-subtle);
+  margin: 0 0 0.2rem;
+}
+
+.local-fallback-form input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.local-fallback-error {
+  font-size: 0.78rem;
+  color: var(--tone-bad-border);
+  margin: 0;
+}
+
+.local-fallback-btn {
+  width: 100%;
+  padding: 0.55rem 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: var(--neutral-soft);
+  color: var(--text-main);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.local-fallback-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

@@ -35,6 +35,7 @@
 | `SSO_REDIRECT_URI` | IdP가 인가 코드를 돌려줄 콜백 URL | (빈 값) | 아니오 | ConfigMap | IdP 클라이언트 설정의 Redirect URI와 정확히 일치해야 함 |
 | `SSO_ADMIN_ALLOWLIST` | 브레이크글래스 admin 계정 목록(콤마 구분) | (빈 값) | **예**(계정 식별자이므로) | **Secret** | 실제 로그인 허용 여부는 DB `allowed_users`가 결정 — 이 목록은 그게 비어도 항상 admin으로 복구되는 안전망. 최초 배포 시 반드시 채울 것. 아래 "SSO 로그인" 절 참고 |
 | `SSO_USER_ID_CLAIM` | `allowed_users.sso_id` 및 브레이크글래스 목록과 대조할 OIDC 클레임 이름 | `email` | 아니오 | ConfigMap | 표준 OIDC 클레임 아님 — IdP마다 다르므로 IT팀 확인 필요(사번/UPN 등 권장) |
+| `SSO_ALLOW_LOCAL_LOGIN` | `AUTH_MODE=sso`에서도 기존 로컬 비밀번호 로그인(`/login`)을 같이 열어둘지 | `false` | 아니오 | ConfigMap | 브로커 `client_id` 발급 전 부트스트랩용. **공유 서버에서 켤 거면 `ADMIN_BOOTSTRAP_PASSWORD`를 기본값에서 반드시 변경할 것** — 아래 "SSO 로그인" 절 참고 |
 
 ### 데이터 계층 접속 정보 (`DATABASE_URL` / `DB_*`)
 
@@ -94,6 +95,15 @@
   안 그러면 재기동마다 진행 중이던 로그인 리다이렉트(state/nonce)가 깨지고,
   Replica가 여러 개면 파드마다 다른 키를 써서 요청이 다른 파드로 튈 때 같은 문제가
   생긴다.
+- `SSO_ALLOW_LOCAL_LOGIN=true`면 `AUTH_MODE=sso`인 상태에서도 기존 로컬 비밀번호
+  로그인(`/login`, `/change-password`)이 같이 열린다 — 브로커 `client_id`가 아직
+  없어 실제 SSO 로그인이 불가능한 개발 단계에서, 관리자가 비밀번호로 먼저 들어가
+  "접근 권한 관리" 화면에 SSO 계정들을 등록해두고, `client_id`가 나오면 실제 SSO
+  버튼으로 그 등록이 제대로 작동하는지 검증하는 용도다. 새 인증 경로를 만드는
+  대신 이미 검증된 로컬 로그인을 그대로 재사용한다(`role="admin"` 고정, local
+  모드와 동일). **공유/사내 접근 가능한 서버에서 켤 거면 `ADMIN_BOOTSTRAP_PASSWORD`를
+  반드시 기본값("0000")에서 바꿀 것** — 안 그러면 SSO 게이트를 잘 알려진
+  비밀번호로 그냥 우회할 수 있다.
 - 로컬 테스트 IdP(Keycloak) 설치 절차는 `README.md`의 "SSO로 전환해서 로그인
   검증하기" 절 참고. **실제 회사 SSO 브로커에 처음 연결하는 절차**는 `README.md`의
   "다른 서버로 옮겨서 실제 SSO 브로커에 연동하기" 절 참고 — 브로커마다 클레임
