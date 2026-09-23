@@ -276,6 +276,36 @@ admin 비밀번호 1개) `user`/`admin` 구분 자체가 성립하지 않기 때
   ("0000")에서 반드시 바꿀 것** — 안 그러면 SSO 게이트를 잘 알려진 비밀번호로
   우회할 수 있게 된다.
 
+### client_id/secret 없이 issuer URL만으로 연동되는 브로커 지원 (완료, 2026-09-23)
+
+실제 사내 SSO Broker를 붙여보니, 지금까지 가정했던 "하나의 issuer에 여러
+client_id가 등록되는" 범용 멀티테넌트 OIDC와 다른 모델이었다 — 사용자가 자기
+AD 계정으로 브로커 포털에 로그인한 상태에서 "서비스 URL"을 등록하면, **그
+서비스 전용의 고유한 issuer(entry) 주소가 개별로 발급**된다. 그 고유 URL
+자체가 등록자만 볼 수 있는 값이라 사실상 클라이언트 식별자 역할을 하고,
+`client_id`/`client_secret`은 발급되지 않는다.
+
+기존 코드는 `SSO_ISSUER_URL`/`SSO_CLIENT_ID`/`SSO_CLIENT_SECRET` 세 가지가
+모두 있어야 `SSO_BROKER_CONFIGURED`로 보고 브로커 연동을 시도했다 — 이런
+브로커는 `SSO_ISSUER_URL`만 있어서 "미설정"으로 오판돼 `/sso/login`이 503을
+반환했다.
+
+- `backend/app/auth/oidc.py`의 `SSO_BROKER_CONFIGURED`를
+  `bool(SSO_ISSUER_URL)`로 바꿔 issuer URL 하나만으로도 연동을 시도하도록
+  했다. `SSO_CLIENT_ID`/`SSO_CLIENT_SECRET`은 그대로 `oauth.register()`에
+  넘기되(기본값이 빈 문자열), authlib이 이를 실제로 지원한다는 걸 소스로
+  확인했다: `client_secret`이 비면 `token_endpoint_auth_method`가 자동으로
+  `"none"`이 되고(`authlib/oauth2/client.py`), `client_id`가 비면 ID 토큰의
+  `aud` 클레임 검증 자체를 건너뛴다(`authlib/oidc/core/claims.py`의
+  `validate_aud`, `if aud and client_id:` 조건) — 브로커가 내부적으로 어떤
+  client_id를 `aud`에 넣든 authlib이 불일치로 크래시하지 않는다.
+- 로컬 Keycloak은 하나의 realm에 여러 client_id가 등록되는 진짜 멀티테넌트
+  IdP라 client_id 없는 요청을 거부하는 게 정상이다 — 이 경로(client_id 없이
+  실제 로그인 성공)는 로컬로 재현/검증할 수 없고, 실제 그런 방식의 사내
+  브로커에서만 검증 가능하다.
+- `backend/tests/test_oidc.py`(신규)에서 `SSO_BROKER_CONFIGURED` 계산 자체를
+  `SSO_ISSUER_URL`만 있는 경우/둘 다 없는 경우로 나눠 단위 테스트한다.
+
 ### PDEP 실연동 (예정, 착수 전 확인/검토할 것)
 
 - 사내 SSO 연동이 실제로 필수/권장인지, 프로토콜이 정말 OIDC인지(SAML 등 다른

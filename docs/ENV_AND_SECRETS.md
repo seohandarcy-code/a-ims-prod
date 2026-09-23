@@ -29,9 +29,9 @@
 | `SESSION_SECRET_KEY` | OAuth state/nonce 세션 쿠키 서명 키(`SessionMiddleware`) | (빈 값 → 기동마다 무작위 생성) | **예** | **Secret** | `AUTH_MODE`와 무관하게 항상 로드되지만 실제로 쓰이는 건 SSO 로그인 흐름뿐. 아래 "SSO 로그인" 절 참고 |
 | `SESSION_COOKIE_SECURE` | 세션 쿠키 Secure 플래그 | `false` | 아니오 | ConfigMap | 실제 HTTPS 배포에서는 `true`로 설정(안 그러면 쿠키가 평문 HTTP로도 전송 가능한 상태로 남음). `true`인데 배포가 HTTP면 브라우저가 쿠키 저장을 거부해 로그인이 깨짐 |
 | `FRONTEND_BASE_URL` | SSO 콜백이 리다이렉트할 프론트 도메인 | (빈 값 → 상대경로 `/#...`) | 아니오 | ConfigMap | 프론트/백엔드가 같은 origin이면 비움. 도메인이 분리되면 프론트의 실제 도메인(`https://ims.company.com` 등)을 채워야 콜백이 백엔드 자기 자신이 아니라 프론트로 정확히 돌아감 |
-| `SSO_ISSUER_URL` | OIDC 발급자(디스커버리) URL | (빈 값) | 아니오 | ConfigMap | `{값}/.well-known/openid-configuration`을 자동 조회 |
-| `SSO_CLIENT_ID` | OIDC 클라이언트 ID | (빈 값) | 아니오 | ConfigMap | |
-| `SSO_CLIENT_SECRET` | OIDC 클라이언트 시크릿 | (빈 값) | **예** | **Secret** | |
+| `SSO_ISSUER_URL` | OIDC 발급자(디스커버리) URL | (빈 값) | 아니오 | ConfigMap | `{값}/.well-known/openid-configuration`을 자동 조회. 이 값 하나만 있어도 브로커 연동이 활성화된다(`SSO_BROKER_CONFIGURED`) — 아래 비고 참고 |
+| `SSO_CLIENT_ID` | OIDC 클라이언트 ID | (빈 값) | 아니오 | ConfigMap | **비워도 된다.** 서비스 URL을 등록하면 그 서비스 전용 고유 issuer 주소를 개별 발급하는 브로커(그 고유 URL 자체가 클라이언트 식별자 역할)는 별도 client_id가 없다 — `SSO_ISSUER_URL`만으로 연동되도록 코드가 지원한다(`backend/app/auth/oidc.py`). 범용 멀티테넌트 IdP(예: 로컬 Keycloak)는 여전히 채워야 함 |
+| `SSO_CLIENT_SECRET` | OIDC 클라이언트 시크릿 | (빈 값) | **예** | **Secret** | 위와 동일한 이유로 비워도 된다 — 비어 있으면 authlib이 토큰 엔드포인트 인증 방식을 자동으로 "none"으로 처리한다 |
 | `SSO_REDIRECT_URI` | IdP가 인가 코드를 돌려줄 콜백 URL | (빈 값) | 아니오 | ConfigMap | IdP 클라이언트 설정의 Redirect URI와 정확히 일치해야 함 |
 | `SSO_ADMIN_ALLOWLIST` | 브레이크글래스 admin 계정 목록(콤마 구분) | (빈 값) | **예**(계정 식별자이므로) | **Secret** | 실제 로그인 허용 여부는 DB `allowed_users`가 결정 — 이 목록은 그게 비어도 항상 admin으로 복구되는 안전망. 최초 배포 시 반드시 채울 것. 아래 "SSO 로그인" 절 참고 |
 | `SSO_USER_ID_CLAIM` | `allowed_users.sso_id` 및 브레이크글래스 목록과 대조할 OIDC 클레임 이름 | `email` | 아니오 | ConfigMap | 표준 OIDC 클레임 아님 — IdP마다 다르므로 IT팀 확인 필요(사번/UPN 등 권장) |
@@ -90,6 +90,15 @@
 - `SSO_USER_ID_CLAIM`(기본 `email`)으로 `allowed_users.sso_id`와 대조할 클레임을
   고른다 — IdP가 사번 클레임을 따로 내려준다면 그 이름으로 바꾼다. 실제 배포 전
   IT팀에 어떤 클레임에 무엇이 담기는지 반드시 확인한다.
+- `SSO_CLIENT_ID`/`SSO_CLIENT_SECRET`은 **브로커에 따라 없어도 된다** —
+  `SSO_BROKER_CONFIGURED`(`backend/app/auth/oidc.py`)는 `SSO_ISSUER_URL` 하나만
+  보고 결정된다. 서비스 URL을 등록하면 그 서비스 전용 고유 issuer 주소를 개별
+  발급해주는 브로커(그 고유 URL 자체가 클라이언트 식별자 역할)는 client_id/secret
+  없이도 이 issuer URL만으로 연동된다 — authlib이 client_id가 비면 ID 토큰의
+  `aud` 검증을 건너뛰고, client_secret이 비면 토큰 엔드포인트 인증을 자동으로
+  "none"으로 처리해 실제로 지원한다. 반대로 로컬 Keycloak처럼 하나의 realm에
+  여러 client_id가 등록되는 범용 멀티테넌트 IdP는 client_id 없는 요청을 거부하므로
+  여전히 채워야 한다 — 브로커 종류에 따라 다르다.
 - `SESSION_SECRET_KEY`를 비워두면 프로세스가 뜰 때마다 무작위 값으로 새로 생성된다
   (로컬 개발은 이걸로 충분). 실 배포에서는 고정값을 Secret으로 반드시 넣는다 —
   안 그러면 재기동마다 진행 중이던 로그인 리다이렉트(state/nonce)가 깨지고,
