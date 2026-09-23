@@ -13,7 +13,7 @@ export function useStatusDetailData(
   const data = ref<StatusDetailResponse | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
-  const { dataVersion } = useAdminAuth()
+  const { dataVersion, token } = useAdminAuth()
 
   async function load(): Promise<void> {
     if (!selectedOrg.value) return
@@ -29,7 +29,7 @@ export function useStatusDetailData(
     }
 
     try {
-      data.value = await fetchStatusDetail(params)
+      data.value = await fetchStatusDetail(params, token.value ?? undefined)
     } catch (err) {
       error.value = err instanceof Error ? err.message : String(err)
     } finally {

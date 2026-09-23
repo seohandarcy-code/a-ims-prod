@@ -29,6 +29,8 @@ export interface MetaResponse {
   org_options: string[]
   org_tree: OrgTreeNode[]
   flow_stage_options: FlowStageOption[]
+  /** "local"(아이디/비밀번호) 또는 "sso"(OIDC 리다이렉트) — 로그인 UI 분기 근거. */
+  auth_mode: 'local' | 'sso'
 }
 
 export interface DetailColumn {
@@ -187,4 +189,24 @@ export interface RowResponse {
 export interface AddColumnRequest {
   name: string
   type?: 'text' | 'money' | 'date'
+}
+
+export interface AllowedUser {
+  sso_id: string
+  name: string
+  team: string
+  is_admin: boolean
+}
+
+export interface AllowedUserCreateRequest {
+  sso_id: string
+  name: string
+  team: string
+  is_admin: boolean
+}
+
+export interface AllowedUserUpdateRequest {
+  name: string
+  team: string
+  is_admin: boolean
 }

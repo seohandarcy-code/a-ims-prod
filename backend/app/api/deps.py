@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth.state import get_auth_store
+from app.config import AUTH_MODE
 from app.data.columns import COL
 from app.data.store import DataStore, get_store
 
@@ -17,7 +18,38 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 def require_admin(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> str:
-    """Authorization: Bearer <token> 헤더를 검증하고 토큰을 반환한다."""
+    """Authorization: Bearer <token> 헤더를 검증하고, role이 "admin"인 세션만 통과시킨다.
+
+    local 모드는 세션이 항상 admin이라 동작 변화가 없다. sso 모드는 로그인 자체는
+    누구나 성공하고(SSO_ADMIN_ALLOWLIST는 role만 가른다 — app/api/auth.py 참고),
+    role이 "user"인 세션이 이 의존성을 타면 403으로 막아야 한다 — 안 그러면 일반유저
+    세션으로 관리자 편집 API를 직접 호출해 뚫을 수 있다.
+    """
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증이 필요합니다.")
+
+    token = credentials.credentials
+    role = get_auth_store().get_role(token)
+    if role is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="세션이 유효하지 않습니다.")
+    if role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 권한이 필요합니다.")
+
+    return token
+
+
+def require_viewer(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> str | None:
+    """대시보드 조회 엔드포인트용 의존성.
+
+    AUTH_MODE=local이면 그대로 통과시킨다(지금까지와 동일하게 대시보드 공개) — local
+    모드는 사용자를 구분할 방법이 없어(공유 admin 비밀번호 1개) 로그인 게이트를 걸
+    방법이 없다. AUTH_MODE=sso일 때만 유효한 세션(admin/user 역할 무관)을 요구한다.
+    """
+    if AUTH_MODE != "sso":
+        return None
+
     if credentials is None or not credentials.credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증이 필요합니다.")
 

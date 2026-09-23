@@ -1,5 +1,8 @@
 import type {
   AddColumnRequest,
+  AllowedUser,
+  AllowedUserCreateRequest,
+  AllowedUserUpdateRequest,
   ChangePasswordRequest,
   CommonFilterParams,
   DashboardResponse,
@@ -98,21 +101,45 @@ function deleteJson<T>(url: string, token: string): Promise<T> {
   return getJson<T>(url, { method: 'DELETE', headers: authHeaders(token) })
 }
 
-export function fetchMeta(): Promise<MetaResponse> {
-  return getJson<MetaResponse>(`${API_BASE}/meta`)
+// AUTH_MODE=sso일 때 /meta·/dashboard·/status-detail은 require_viewer로 게이트돼
+// 있어 토큰 없이는 401이 난다(local 모드는 서버가 no-op이라 토큰 없이 넘겨도 안전).
+export function fetchMeta(token?: string): Promise<MetaResponse> {
+  return getJson<MetaResponse>(`${API_BASE}/meta`, token ? { headers: authHeaders(token) } : undefined)
 }
 
-export function fetchDashboard(params: CommonFilterParams): Promise<DashboardResponse> {
-  return getJson<DashboardResponse>(`${API_BASE}/dashboard${buildQuery(params)}`)
+export function fetchDashboard(params: CommonFilterParams, token?: string): Promise<DashboardResponse> {
+  return getJson<DashboardResponse>(
+    `${API_BASE}/dashboard${buildQuery(params)}`,
+    token ? { headers: authHeaders(token) } : undefined,
+  )
 }
 
-export function fetchStatusDetail(params: CommonFilterParams): Promise<StatusDetailResponse> {
-  return getJson<StatusDetailResponse>(`${API_BASE}/status-detail${buildQuery(params)}`)
+export function fetchStatusDetail(params: CommonFilterParams, token?: string): Promise<StatusDetailResponse> {
+  return getJson<StatusDetailResponse>(
+    `${API_BASE}/status-detail${buildQuery(params)}`,
+    token ? { headers: authHeaders(token) } : undefined,
+  )
 }
 
 export function login(payload: LoginRequest): Promise<LoginResponse> {
   return postJson<LoginResponse>(`${API_BASE}/auth/login`, payload)
 }
+
+// 프론트가 로그인 여부를 판단하기 이전에 지금이 로그인 게이트가 필요한 모드인지부터
+// 알아야 하는 완전 공개 엔드포인트(/meta는 sso 모드에서 게이트돼 있어 로그인 전에는
+// 못 부른다).
+export function fetchAuthMode(): Promise<{ auth_mode: 'local' | 'sso' }> {
+  return getJson<{ auth_mode: 'local' | 'sso' }>(`${API_BASE}/auth/mode`)
+}
+
+// SSO 로그인은 fetch가 아니라 실제 페이지 이동으로 시작해야 한다(IdP 리다이렉트를
+// 타야 하므로) — 그래서 함수가 아니라 이동할 URL 문자열만 내보낸다.
+export const SSO_LOGIN_URL = `${API_BASE}/auth/sso/login`
+
+// 사내에서 이미 SSO로 로그인돼 있으면(다른 사내 페이지 등) 버튼 클릭 없이 조용히
+// 재인증하기 위한 prompt=none 시도용 URL. IdP 세션이 없으면 로그인 폼 대신
+// login_required류 오류로 돌아오고, 백엔드가 그걸 "#sso_required=1"로 변환해준다.
+export const SSO_SILENT_LOGIN_URL = `${API_BASE}/auth/sso/login?silent=1`
 
 export function logout(token: string): Promise<StatusResponse> {
   return postJson<StatusResponse>(`${API_BASE}/auth/logout`, {}, token)
@@ -166,4 +193,26 @@ export async function fetchAdminDatBlob(token: string): Promise<Blob> {
     throw new ApiError(res.status, `dat 다운로드 실패 (${res.status})`)
   }
   return res.blob()
+}
+
+// SSO 로그인 접근 제어 목록("접근 권한 관리" 탭) — 누가 로그인할 수 있는지/누가
+// admin인지 관리자가 직접 등록·수정·삭제한다.
+export function fetchAccessUsers(token: string): Promise<AllowedUser[]> {
+  return authedJson<AllowedUser[]>(`${API_BASE}/admin/access-users`, token)
+}
+
+export function createAccessUser(payload: AllowedUserCreateRequest, token: string): Promise<AllowedUser> {
+  return postJson<AllowedUser>(`${API_BASE}/admin/access-users`, payload, token)
+}
+
+export function updateAccessUser(
+  ssoId: string,
+  payload: AllowedUserUpdateRequest,
+  token: string,
+): Promise<AllowedUser> {
+  return patchJson<AllowedUser>(`${API_BASE}/admin/access-users/${encodeURIComponent(ssoId)}`, payload, token)
+}
+
+export function deleteAccessUser(ssoId: string, token: string): Promise<StatusResponse> {
+  return deleteJson<StatusResponse>(`${API_BASE}/admin/access-users/${encodeURIComponent(ssoId)}`, token)
 }

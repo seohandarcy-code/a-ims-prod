@@ -23,3 +23,7 @@ class ChangePasswordRequest(BaseModel):
 
 class StatusResponse(BaseModel):
     status: str
+
+
+class AuthModeResponse(BaseModel):
+    auth_mode: str

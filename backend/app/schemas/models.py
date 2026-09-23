@@ -32,6 +32,8 @@ class MetaResponse(BaseModel):
     org_tree: list[dict[str, Any]]
     # 사이드바 "투자 진행 흐름 구분" 필터 옵션 — 종합현황 퍼널과 동일한 key/label 16개(count 제외).
     flow_stage_options: list[dict[str, Any]]
+    # "local"(아이디/비밀번호) 또는 "sso"(OIDC 리다이렉트) — 프론트가 로그인 UI를 분기하는 근거.
+    auth_mode: str
 
 
 class DashboardResponse(BaseModel):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import urllib.parse
 from pathlib import Path
 
@@ -65,6 +66,56 @@ DATABASE_URL = _build_database_url()
 # 때 전부 같은 잘 알려진 기본 비밀번호를 공유하지 않도록, 환경마다 Secret으로 다르게
 # 주입할 수 있게 했다.
 ADMIN_BOOTSTRAP_PASSWORD = os.getenv("ADMIN_BOOTSTRAP_PASSWORD", "").strip() or "0000"
+
+# 2026-09-18: SSO 연동(4단계) — 로그인 "수단"만 local(비밀번호) <-> sso(OIDC)로
+# 바꾼다. 세션 발급/검증(app/auth/state.py의 AdminAuthStore._sessions)은 두 모드가
+# 그대로 공유하므로, require_admin이나 admin.py 편집 엔드포인트는 이 스위치와
+# 무관하게 전혀 손대지 않는다. 범위를 "로그인 수단 교체"로 좁혔기 때문에
+# users/sso_identity 같은 개인별 계정 테이블은 만들지 않는다 — 지금처럼 인증에
+# 성공하면 여전히 "admin" 역할 하나만 존재한다.
+# docs/db-migration-roadmap.md 4단계, docs/ENV_AND_SECRETS.md, README.md
+# "SSO로 전환해서 로그인 검증하기" 절 참고.
+AUTH_MODE = os.getenv("AUTH_MODE", "local").strip().lower() or "local"
+
+SSO_ISSUER_URL = os.getenv("SSO_ISSUER_URL", "").strip()
+SSO_CLIENT_ID = os.getenv("SSO_CLIENT_ID", "").strip()
+SSO_CLIENT_SECRET = os.getenv("SSO_CLIENT_SECRET", "").strip()
+SSO_REDIRECT_URI = os.getenv("SSO_REDIRECT_URI", "").strip()
+
+# 브레이크글래스 admin 목록(콤마 구분, 아래 SSO_USER_ID_CLAIM 클레임 값과 대조).
+# 실제 로그인 허용 여부는 이제 DB의 allowed_users 테이블(app/auth/access_store.py,
+# 관리자 화면 "접근 권한 관리" 탭)이 결정한다 — 이 목록은 그 테이블을 관리자가 잘못
+# 건드려도(예: 실수로 admin을 전부 지움) 로그인할 때마다 자동으로 admin 권한이
+# 복구되는 최종 안전망이다. 비워두면 브레이크글래스가 없는 것이므로, 최초 배포
+# 시 반드시 한 명 이상 채워야 한다(안 그러면 allowed_users가 비어있는 상태에서
+# 아무도 로그인할 수 없어 관리자 화면 자체에 못 들어가는 락아웃이 생긴다).
+SSO_ADMIN_ALLOWLIST = [
+    item.strip() for item in os.getenv("SSO_ADMIN_ALLOWLIST", "").split(",") if item.strip()
+]
+# allowed_users.sso_id 및 위 브레이크글래스 목록과 대조할 클레임 이름. 표준 OIDC
+# 클레임이 아니라 IdP(사내 SSO)마다 다르므로 실제 배포 전 IT팀에 확인 필요 —
+# 사번/UPN 등 안정적인 고유 식별자를 쓰는 클레임으로 맞춘다.
+SSO_USER_ID_CLAIM = os.getenv("SSO_USER_ID_CLAIM", "").strip() or "email"
+
+# OAuth state/nonce를 담는 Starlette SessionMiddleware 서명 키. 이 세션은 로그인
+# 리다이렉트가 왕복하는 짧은 시간에만 쓰이므로(로그인 자체의 세션이 아님 —
+# 그건 AdminAuthStore가 별도 관리), 로컬 dev에서는 비워두면 프로세스 기동마다
+# 임의 값을 생성해도 문제없다. 여러 레플리카로 운영하거나 기동 중 재시작이
+# 잦다면(진행 중이던 로그인이 깨질 수 있음) 안정적인 값을 Secret으로 고정한다.
+SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "").strip() or secrets.token_urlsafe(32)
+
+# 실제 HTTPS 배포에서는 반드시 true로 설정 — 세션 쿠키(OAuth state/nonce)에
+# Secure 플래그를 붙여 평문 HTTP로는 전송되지 않게 한다. 로컬 http 개발 환경은
+# 기본값(false)을 그대로 둔다(Secure 쿠키는 https가 아니면 브라우저가 아예
+# 저장을 거부해 로그인 자체가 깨진다).
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "").strip().lower() == "true"
+
+# 프론트/백엔드가 같은 origin이면(지금까지 전제) 비워둔다 — SSO 콜백이 상대경로
+# "/#token=..."로 리다이렉트해도 문제없다. PDEP 등에서 프론트/백엔드 도메인이
+# 분리되면(frontend/nginx.conf 주석 참고) 프론트의 실제 도메인을 채워야
+# 콜백이 백엔드 자기 자신이 아니라 프론트로 정확히 돌아간다. 예:
+# FRONTEND_BASE_URL=https://ims.company.com
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "").strip()
 
 CURRENT_YEAR = int(os.getenv("CURRENT_YEAR", "2026"))
 

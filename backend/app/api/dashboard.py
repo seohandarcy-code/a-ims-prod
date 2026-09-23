@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import CommonFilters
+from app.api.deps import CommonFilters, require_viewer
 from app.calc.detail import DETAIL_COLUMNS, DETAIL_SEARCH_KEYS, build_detail_rows
 from app.calc.helpers import extract_month, is_contract_completed, is_review_completed, safe_divide, unique_sorted
 from app.calc.kpi import calculate_kpi_values
@@ -24,6 +24,7 @@ def get_dashboard(
     funnel_key: str | None = Query(default=None),
     month_key: int | None = Query(default=None),
     store: DataStore = Depends(get_store),
+    _viewer: str | None = Depends(require_viewer),
 ) -> DashboardResponse:
     all_df = store.get_df()
     current_month = store.get_current_month()

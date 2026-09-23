@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from app.api.deps import require_viewer
 from app.calc.helpers import unique_sorted
 from app.calc.org import build_org_tree, flat_part_options
 from app.calc.stage import funnel_filter_options
+from app.config import AUTH_MODE
 from app.data.columns import COL, PJT_TOTAL_LABEL
 from app.data.store import DataStore, get_store
 from app.schemas.models import FilterOptions, MetaResponse
@@ -13,7 +15,10 @@ router = APIRouter(prefix="/api/v1", tags=["meta"])
 
 
 @router.get("/meta", response_model=MetaResponse)
-def get_meta(store: DataStore = Depends(get_store)) -> MetaResponse:
+def get_meta(
+    store: DataStore = Depends(get_store),
+    _viewer: str | None = Depends(require_viewer),
+) -> MetaResponse:
     df = store.get_df()
     org_tree = build_org_tree(df)
 
@@ -45,4 +50,5 @@ def get_meta(store: DataStore = Depends(get_store)) -> MetaResponse:
         org_options=[PJT_TOTAL_LABEL] + filter_options.org,
         org_tree=org_tree,
         flow_stage_options=funnel_filter_options(),
+        auth_mode=AUTH_MODE,
     )

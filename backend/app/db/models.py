@@ -11,7 +11,7 @@ investment_rows의 컬럼 목록은 app/data/columns.py의 COL 딕셔너리에�
 """
 from __future__ import annotations
 
-from sqlalchemy import Column, ForeignKey, Integer, MetaData, Table, Text
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, MetaData, Table, Text
 
 from app.data.columns import COL
 
@@ -41,6 +41,20 @@ custom_column_values = Table(
     Column("row_no", Integer, ForeignKey("investment_rows.no", ondelete="CASCADE"), primary_key=True),
     Column("column_key", Text, ForeignKey("custom_column_defs.key", ondelete="CASCADE"), primary_key=True),
     Column("value", Text, nullable=False, server_default=""),
+)
+
+# SSO 로그인 접근 제어 목록 — sso_id(SSO_USER_ID_CLAIM 클레임 값)가 여기 등록돼
+# 있어야 로그인(세션 발급)이 허용된다(app/api/auth.py의 /sso/callback 참고).
+# 투자 데이터를 사람별로 다르게 보여주는 행 단위 권한이 아니라, 누가 볼 수 있는지/
+# 누가 admin인지만 관리하는 접근 제어 테이블이다.
+allowed_users = Table(
+    "allowed_users",
+    metadata,
+    Column("sso_id", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("team", Text, nullable=False, server_default=""),
+    Column("is_admin", Boolean, nullable=False, server_default="0"),
+    Column("created_at", Text, nullable=False),
 )
 
 # 단일 슬롯 백업(id=1 고정) — 편집 직전 전체 상태를 JSON으로 통째로 저장해

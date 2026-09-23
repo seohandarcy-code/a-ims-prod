@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import CommonFilters
+from app.api.deps import CommonFilters, require_viewer
 from app.calc.monthly import (
     monthly_contract_records,
     monthly_progress_records,
@@ -33,6 +33,7 @@ def get_status_detail(
     filters: CommonFilters = Depends(),
     selected_org: str = Query(default=PJT_TOTAL_LABEL),
     store: DataStore = Depends(get_store),
+    _viewer: str | None = Depends(require_viewer),
 ) -> StatusDetailResponse:
     all_df = store.get_df()
     current_month = store.get_current_month()

@@ -1,5 +1,21 @@
 <template>
+  <div
+    v-if="authMode === 'sso'"
+    class="admin-form"
+  >
+    <p class="admin-sso-desc">
+      회사 계정(SSO)으로 로그인합니다.
+    </p>
+    <a
+      class="admin-submit admin-sso-btn"
+      :href="ssoLoginUrl"
+    >
+      회사 계정으로 로그인
+    </a>
+  </div>
+
   <form
+    v-else
     class="admin-form"
     @submit.prevent="handleSubmit"
   >
@@ -39,10 +55,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useAdminAuth } from '../../composables/useAdminAuth'
+import { useFilters } from '../../composables/useFilters'
+import { SSO_LOGIN_URL } from '../../api/client'
 
 const { login, authLoading, authError } = useAdminAuth()
+const { meta } = useFilters()
+
+const authMode = computed(() => meta.value?.auth_mode ?? 'local')
+const ssoLoginUrl = SSO_LOGIN_URL
 
 const username = ref('admin')
 const password = ref('')
@@ -82,6 +104,12 @@ async function handleSubmit(): Promise<void> {
   margin: 0;
 }
 
+.admin-sso-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
 .admin-submit {
   padding: 0.55rem 0;
   border: none;
@@ -90,6 +118,12 @@ async function handleSubmit(): Promise<void> {
   color: var(--select-fill-text);
   font-weight: 700;
   cursor: pointer;
+  text-align: center;
+}
+
+.admin-sso-btn {
+  display: block;
+  text-decoration: none;
 }
 
 .admin-submit:disabled {

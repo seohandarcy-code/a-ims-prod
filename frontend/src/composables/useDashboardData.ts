@@ -15,7 +15,7 @@ export function useDashboardData(
   const data = ref<DashboardResponse | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
-  const { dataVersion } = useAdminAuth()
+  const { dataVersion, token } = useAdminAuth()
 
   async function load(): Promise<void> {
     if (!selectedOrg.value) return
@@ -34,7 +34,7 @@ export function useDashboardData(
     }
 
     try {
-      data.value = await fetchDashboard(params)
+      data.value = await fetchDashboard(params, token.value ?? undefined)
     } catch (err) {
       error.value = err instanceof Error ? err.message : String(err)
     } finally {

@@ -2,9 +2,10 @@ import logging
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
-from app.api import admin, auth, dashboard, meta, status_detail
-from app.config import CORS_ORIGINS
+from app.api import access, admin, auth, dashboard, meta, status_detail
+from app.config import CORS_ORIGINS, SESSION_COOKIE_SECURE, SESSION_SECRET_KEY
 from app.data.store import data_store
 from app.logging_config import configure_logging
 
@@ -20,6 +21,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# SSO(AUTH_MODE=sso) 로그인 리다이렉트 중 OAuth state/nonce를 담아두는 용도.
+# app/config.py의 SESSION_SECRET_KEY 참고 — AUTH_MODE=local이면 이 미들웨어는
+# 그냥 아무것도 안 쓰인 채로 있는다. https_only는 SESSION_COOKIE_SECURE로 제어 —
+# 실제 HTTPS 배포에서 true로 켠다.
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, https_only=SESSION_COOKIE_SECURE)
 
 
 @app.on_event("startup")
@@ -56,3 +63,4 @@ app.include_router(dashboard.router)
 app.include_router(status_detail.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(access.router)

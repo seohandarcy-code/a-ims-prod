@@ -58,12 +58,22 @@
               전체 데이터
             </button>
             <button
+              v-if="authMode === 'local'"
               type="button"
               class="admin-tab"
               :class="{ active: activeTab === 'password' }"
               @click="activeTab = 'password'"
             >
               비밀번호 변경
+            </button>
+            <button
+              v-if="authMode === 'sso'"
+              type="button"
+              class="admin-tab"
+              :class="{ active: activeTab === 'access' }"
+              @click="activeTab = 'access'"
+            >
+              접근 권한 관리
             </button>
           </div>
 
@@ -77,6 +87,7 @@
         </div>
 
         <AdminDataPanel v-if="activeTab === 'data'" />
+        <AdminAccessPanel v-else-if="activeTab === 'access'" />
         <AdminPasswordForm v-else />
       </template>
     </div>
@@ -84,15 +95,20 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAdminAuth } from '../../composables/useAdminAuth'
+import { useFilters } from '../../composables/useFilters'
+import AdminAccessPanel from './AdminAccessPanel.vue'
 import AdminDataPanel from './AdminDataPanel.vue'
 import AdminLoginForm from './AdminLoginForm.vue'
 import AdminPasswordForm from './AdminPasswordForm.vue'
 
 const { modalOpen, isAuthed, logout } = useAdminAuth()
+const { meta } = useFilters()
 
-const activeTab = ref<'data' | 'password'>('data')
+const authMode = computed(() => meta.value?.auth_mode ?? 'local')
+
+const activeTab = ref<'data' | 'password' | 'access'>('data')
 const dialogRef = ref<HTMLDivElement | null>(null)
 const isFullscreen = ref(false)
 

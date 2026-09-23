@@ -209,7 +209,10 @@
         </div>
       </div>
 
-      <div class="drawer-footer">
+      <div
+        v-if="showAdminEntry"
+        class="drawer-footer"
+      >
         <button
           type="button"
           class="admin-entry-btn"
@@ -244,7 +247,12 @@ const {
   selectAllOrg,
   clearAllOrg,
 } = useFilters()
-const { modalOpen: adminModalOpen } = useAdminAuth()
+const { modalOpen: adminModalOpen, isAdmin } = useAdminAuth()
+
+// local 모드는 지금까지처럼 항상 노출(공유 admin 비밀번호 1개뿐이라 역할 구분이
+// 없음). sso 모드는 관리자 role일 때만 노출 — 일반유저는 대시보드는 보되 편집
+// 화면에는 아예 진입할 수 없다.
+const showAdminEntry = computed(() => meta.value?.auth_mode !== 'sso' || isAdmin.value)
 
 const fabRef = ref<HTMLButtonElement | null>(null)
 const drawerRef = ref<HTMLDivElement | null>(null)
@@ -284,8 +292,6 @@ function closeDrawer(): void {
   if (open.value) open.value = false
 }
 
-// 지금은 항상 노출한다. 추후 SSO 연동 시 관리자 권한 여부에 따라
-// 이 버튼 자체를 v-if로 감싸는 식으로 조건부 노출로 바꾸면 된다.
 function openAdminSettings(): void {
   closeDrawer()
   adminModalOpen.value = true

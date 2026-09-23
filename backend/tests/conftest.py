@@ -15,12 +15,22 @@ DATABASE_URL이 이미 환경에 설정돼 있으면(예: 로컬 PostgreSQL 검�
 DATABASE_URL은 app 모듈이 임포트되는 시점(app/config.py가 import 시 환경변수를
 읽는다)보다 먼저 설정해야 하므로, 이 파일에서 app 관련 import보다 앞서
 최상단에서 설정한다.
+
+AUTH_MODE는 (DATABASE_URL과 달리) 개발자 로컬 backend/.env 값과 무관하게 항상
+"local"로 강제한다 — 이 테스트 스위트(특히 test_admin_edit.py/test_admin_columns.py)는
+전부 아이디/비밀번호 로그인을 전제로 하는데, python-dotenv가 app.config import
+시점에 backend/.env를 그대로 읽어버리므로, 로컬에서 SSO 검증용으로
+AUTH_MODE=sso를 .env에 남겨둔 채 pytest를 돌리면 전체 테스트가 400으로 깨진다
+(실제로 겪은 문제 — 2026-09-18). SSO 쪽 로직(app/auth/oidc.py.is_allowed_by_claims)은
+test_sso.py에서 AUTH_MODE와 무관한 순수 함수로 따로 검증한다.
 """
 from __future__ import annotations
 
 import os
 import tempfile
 from pathlib import Path
+
+os.environ["AUTH_MODE"] = "local"
 
 if "DATABASE_URL" not in os.environ:
     _TEST_DB_PATH = Path(tempfile.gettempdir()) / "a_ims_prod_test.db"
@@ -34,6 +44,7 @@ from app.auth.state import DEFAULT_PASSWORD, admin_auth_store  # noqa: E402
 from app.data.store import data_store  # noqa: E402
 from app.db.engine import engine  # noqa: E402
 from app.db.models import (  # noqa: E402
+    allowed_users,
     backup_snapshot,
     custom_column_defs,
     custom_column_values,
@@ -49,6 +60,7 @@ def _reset_db() -> None:
         conn.execute(custom_column_defs.delete())
         conn.execute(backup_snapshot.delete())
         conn.execute(investment_rows.delete())
+        conn.execute(allowed_users.delete())
 
 
 @pytest.fixture(autouse=True)

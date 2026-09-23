@@ -26,14 +26,14 @@ const selectedOrg = ref<string>('')
 
 let loaded = false
 
-async function loadMeta(): Promise<void> {
+async function loadMeta(token?: string): Promise<void> {
   if (loaded) return
   loaded = true
   metaLoading.value = true
   metaError.value = null
 
   try {
-    const data = await fetchMeta()
+    const data = await fetchMeta(token)
     meta.value = data
 
     selected.leader_opinion = [...data.filter_options.leader_opinion]
