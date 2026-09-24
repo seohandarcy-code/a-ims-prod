@@ -70,6 +70,12 @@
       <p class="login-gate-desc">
         이 대시보드는 회사 계정으로 로그인해야 볼 수 있습니다.
       </p>
+      <p
+        v-if="ssoError"
+        class="sso-error-banner"
+      >
+        {{ ssoErrorMessage }}
+      </p>
       <button
         type="button"
         class="login-gate-btn"
@@ -146,6 +152,7 @@ const {
   userTeam,
   ssoRequired,
   accessDenied,
+  ssoError,
   authLoading,
   authError,
   login,
@@ -190,8 +197,17 @@ const showLoginGate = computed(
   () =>
     authMode.value === 'sso' &&
     !isAuthed.value &&
-    (ssoRequired.value || !ssoBrokerConfigured.value) &&
+    (ssoRequired.value || !ssoBrokerConfigured.value || !!ssoError.value) &&
     !accessDenied.value,
+)
+
+// SSO 실패 사유(app/api/auth.py의 sso_error)를 사람이 읽을 문구로 바꾼다.
+// 지금은 broker_unreachable 하나뿐이지만 나중에 늘어날 걸 고려해 매핑으로 둔다.
+const SSO_ERROR_MESSAGES: Record<string, string> = {
+  broker_unreachable: 'SSO 브로커에 연결하지 못했습니다. 네트워크 또는 SSO_ISSUER_URL 설정을 확인해주세요.',
+}
+const ssoErrorMessage = computed(
+  () => (ssoError.value && SSO_ERROR_MESSAGES[ssoError.value]) || 'SSO 로그인 중 오류가 발생했습니다.',
 )
 // 로그인은 됐지만(팀/이름을 아는) sso 모드일 때만 우측 상단 접속자 정보를 보여준다.
 // local 모드는 개인별 계정 개념이 없어 표시할 게 없다.
@@ -229,10 +245,12 @@ onMounted(async () => {
     return
   }
 
-  if (ssoRequired.value || accessDenied.value) {
+  if (ssoRequired.value || accessDenied.value || ssoError.value) {
     // 조용한 시도가 이미 실패로 끝났거나(ssoRequired) 미등록 계정으로 거부된
     // 상태(accessDenied) — 둘 다 재시도하지 않는다(자동 재시도하면 리다이렉트
-    // 루프가 되거나, 매번 같은 거부 화면으로 왕복만 반복하게 된다).
+    // 루프가 되거나, 매번 같은 거부 화면으로 왕복만 반복하게 된다). 브로커
+    // 통신 실패(ssoError)도 마찬가지다 — non-silent 실패는 sso_required가
+    // 안 딸려오므로 이 가드가 없으면 곧바로 또 조용한 시도를 걸어버린다.
     return
   }
 
@@ -351,6 +369,21 @@ onMounted(async () => {
 .login-gate-desc {
   color: var(--text-subtle);
   font-size: 1.05rem;
+}
+
+.sso-error-banner {
+  width: 100%;
+  max-width: 360px;
+  margin: 0;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border-color);
+  border-left: 8px solid var(--tone-bad-border);
+  border-radius: 0.6rem;
+  background: var(--card-bg);
+  color: var(--tone-bad-border);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  text-align: left;
 }
 
 .login-gate-btn {

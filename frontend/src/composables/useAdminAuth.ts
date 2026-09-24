@@ -21,6 +21,10 @@ const ssoRequired = ref(false)
 // IdP 인증에는 성공했지만 allowed_users에 등록되지 않은 계정 — 관리자가 "접근
 // 권한 관리" 탭에서 등록해줘야 한다. sso_required와 마찬가지로 재시도하지 않는다.
 const accessDenied = ref(false)
+// 브로커 자체와 통신이 안 되는 이상 상황(discovery/token/JWKS 네트워크 실패
+// 등, app/api/auth.py의 broker_unreachable) — 단순히 IdP 세션이 없는 정상
+// 상황(sso_required)과 구분해 게이트 화면에 에러 배너로 보여준다.
+const ssoError = ref<string | null>(null)
 const modalOpen = ref(false)
 const authLoading = ref(false)
 const authError = ref<string | null>(null)
@@ -43,6 +47,12 @@ function consumeSsoCallbackToken(): void {
   if (!window.location.hash) return
 
   const params = new URLSearchParams(window.location.hash.slice(1))
+
+  // sso_error는 sso_required=1과 함께 올 수 있어(silent 실패) 아래 return문들과
+  // 별개로 먼저 읽어둔다.
+  if (params.has('sso_error')) {
+    ssoError.value = params.get('sso_error')
+  }
 
   if (params.has('sso_required')) {
     ssoRequired.value = true
@@ -131,6 +141,7 @@ export function useAdminAuth() {
     isAdmin,
     ssoRequired,
     accessDenied,
+    ssoError,
     modalOpen,
     authLoading,
     authError,

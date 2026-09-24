@@ -303,8 +303,37 @@ AD 계정으로 브로커 포털에 로그인한 상태에서 "서비스 URL"을
   IdP라 client_id 없는 요청을 거부하는 게 정상이다 — 이 경로(client_id 없이
   실제 로그인 성공)는 로컬로 재현/검증할 수 없고, 실제 그런 방식의 사내
   브로커에서만 검증 가능하다.
-- `backend/tests/test_oidc.py`(신규)에서 `SSO_BROKER_CONFIGURED` 계산 자체를
-  `SSO_ISSUER_URL`만 있는 경우/둘 다 없는 경우로 나눠 단위 테스트한다.
+- `SSO_BROKER_CONFIGURED` 계산 자체(`bool(SSO_ISSUER_URL)`)에 대한 전용 단위
+  테스트는 만들지 않았다 — `importlib.reload`로 `app.auth.oidc`를 다시
+  로드해보려 했으나, `app.api.auth`가 이미 `from app.auth.oidc import oauth`로
+  바인딩해둔 `oauth` 싱글턴과 어긋나는 새 객체가 생겨 기존 `test_roles.py`의
+  SSO 콜백 테스트 6개를 깨뜨렸다(module reload가 cross-module 바인딩을 못
+  따라감). 한 줄짜리 `bool()` 로직에 그 정도 위험을 감수할 가치가 없다고
+  보고 제거했다 — `test_roles.py`가 `SSO_BROKER_CONFIGURED`를 True/False로
+  직접 monkeypatch하는 기존 테스트들이 간접적으로 계속 검증해준다.
+
+### SSO 로그인 시작/콜백의 브로커 통신 실패가 크래시로 새던 문제 (완료, 2026-09-23)
+
+위 client_id 생략 지원 때문에 실사용에서 새로 드러난 문제 — 브로커
+`client_id`/`secret`이 비어 있어도 `SSO_ISSUER_URL`만 있으면
+`SSO_BROKER_CONFIGURED=True`가 되므로, `frontend/src/App.vue`의 `onMounted`가
+더 이상 조용한 재인증 시도(`/sso/login?silent=1`)를 건너뛰지 않고 페이지
+로드 시 자동으로 호출한다. 그런데 `authlib`은 리다이렉트 URL을 만들기 전에
+`SSO_ISSUER_URL`의 `.well-known/openid-configuration`을 백엔드가 직접
+실시간으로 fetch한다(`authlib/integrations/base_client/async_app.py`의
+`load_server_metadata`) — 이 요청이 브로커 네트워크 문제 등으로 실패하면
+예외가 그대로 위로 전파되고, `backend/app/api/auth.py`의 `/sso/login`은 이를
+전혀 받아주지 않아 처리되지 않은 500이 됐다. 사내 환경에서 실제로 "페이지
+로드하자마자 internal error"로 재현됨(이전엔 client_id가 비어 있으면
+`SSO_BROKER_CONFIGURED=False`라 이 자동 시도 자체가 안 걸려 문제가 없었다).
+
+- `/sso/login`: `authorize_redirect(...)` 호출을 try/except로 감싸서, 실패
+  시 `silent=1`이면 크래시 대신 기존 "조용한 재인증 실패" 경로
+  (`#sso_required=1`)로, 아니면 502로 응답하도록 수정.
+- `/sso/callback`: 기존 `OAuthError`(IdP가 로그인을 실제로 거부한 경우, 401
+  유지)와 별개로, 토큰/JWKS 엔드포인트 네트워크 실패 같은 `OAuthError`가
+  아닌 예외도 같은 원칙(silent면 `#sso_required=1`, 아니면 502)으로 처리.
+- 두 경우 모두 예외 타입/메시지를 로그로 남겨 진단 가능하게 함.
 
 ### PDEP 실연동 (예정, 착수 전 확인/검토할 것)
 

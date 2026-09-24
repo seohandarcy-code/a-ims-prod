@@ -178,6 +178,90 @@ def test_sso_callback_non_silent_failure_returns_401(monkeypatch: pytest.MonkeyP
     assert callback_res.status_code == 401
 
 
+def test_sso_login_silent_network_failure_redirects_with_error_reason(monkeypatch: pytest.MonkeyPatch):
+    """authorize_redirect가 OAuthError가 아닌 일반 예외(브로커 discovery 조회
+    실패 등)를 던지면, silent=1일 때 500으로 죽는 대신 "조용한 재인증 실패"와
+    같은 경로로 안전하게 넘어가야 한다 — 실제로 겪은 버그(SSO_ISSUER_URL만
+    있고 client_id/secret이 없는 브로커에서, 페이지 로드 시 자동으로 도는
+    silent 시도가 discovery 조회 실패로 크래시해 로그인 게이트 화면조차
+    못 봤다). sso_error=broker_unreachable을 같이 실어서 프론트가 "단순히
+    로그인 안 됨"과 구분해 에러 배너를 보여줄 수 있게 한다."""
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+
+    mock_sso = AsyncMock()
+    mock_sso.authorize_redirect.side_effect = RuntimeError("discovery unreachable")
+    monkeypatch.setattr("app.auth.oidc.oauth.sso", mock_sso, raising=False)
+
+    with TestClient(app) as client:
+        r = client.get("/api/v1/auth/sso/login?silent=1", follow_redirects=False)
+
+    assert r.status_code == 307
+    assert r.headers["location"] == "/#sso_required=1&sso_error=broker_unreachable"
+
+
+def test_sso_login_non_silent_network_failure_redirects_with_error_reason(monkeypatch: pytest.MonkeyPatch):
+    """같은 상황이지만 사용자가 버튼을 직접 눌러 시도한 경우(non-silent)에는
+    raw JSON 에러 대신 프론트로 리다이렉트해서 게이트 화면 안에 에러 배너로
+    보여줄 수 있게 한다(이 엔드포인트는 브라우저 navigation 전용이라 JSON
+    바디를 읽을 소비자가 없다)."""
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+
+    mock_sso = AsyncMock()
+    mock_sso.authorize_redirect.side_effect = RuntimeError("discovery unreachable")
+    monkeypatch.setattr("app.auth.oidc.oauth.sso", mock_sso, raising=False)
+
+    with TestClient(app) as client:
+        r = client.get("/api/v1/auth/sso/login", follow_redirects=False)
+
+    assert r.status_code == 307
+    assert r.headers["location"] == "/#sso_error=broker_unreachable"
+
+
+def test_sso_callback_non_oauth_failure_redirects_with_error_reason_when_silent(monkeypatch: pytest.MonkeyPatch):
+    """authorize_access_token이 OAuthError가 아닌 일반 예외(토큰/JWKS 엔드포인트
+    네트워크 실패 등)를 던져도 silent이면 크래시 대신 sso_required=1로 넘어가되,
+    sso_error=broker_unreachable도 같이 실어 보낸다."""
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+
+    mock_sso = AsyncMock()
+    mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
+    mock_sso.authorize_access_token.side_effect = RuntimeError("token endpoint unreachable")
+    monkeypatch.setattr("app.auth.oidc.oauth.sso", mock_sso, raising=False)
+
+    with TestClient(app) as client:
+        login_res = client.get("/api/v1/auth/sso/login?silent=1", follow_redirects=False)
+        assert login_res.status_code == 307
+
+        callback_res = client.get("/api/v1/auth/sso/callback", follow_redirects=False)
+
+    assert callback_res.status_code == 307
+    assert callback_res.headers["location"] == "/#sso_required=1&sso_error=broker_unreachable"
+
+
+def test_sso_callback_non_oauth_failure_redirects_with_error_reason_when_not_silent(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+
+    mock_sso = AsyncMock()
+    mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
+    mock_sso.authorize_access_token.side_effect = RuntimeError("token endpoint unreachable")
+    monkeypatch.setattr("app.auth.oidc.oauth.sso", mock_sso, raising=False)
+
+    with TestClient(app) as client:
+        login_res = client.get("/api/v1/auth/sso/login", follow_redirects=False)
+        assert login_res.status_code == 307
+
+        callback_res = client.get("/api/v1/auth/sso/callback", follow_redirects=False)
+
+    assert callback_res.status_code == 307
+    assert callback_res.headers["location"] == "/#sso_error=broker_unreachable"
+
+
 def test_local_login_blocked_in_sso_mode_by_default(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
 

@@ -143,7 +143,24 @@ async def sso_login(request: Request, silent: bool = Query(default=False)) -> Re
         )
     request.session["sso_silent_attempt"] = silent
     kwargs = {"prompt": "none"} if silent else {}
-    return await oauth.sso.authorize_redirect(request, SSO_REDIRECT_URI, **kwargs)
+    try:
+        return await oauth.sso.authorize_redirect(request, SSO_REDIRECT_URI, **kwargs)
+    except Exception as exc:
+        # 리다이렉트 URL을 만들기 전에 authlib이 SSO_ISSUER_URL의
+        # .well-known/openid-configuration을 우리 백엔드가 직접 실시간으로
+        # fetch한다 — 브로커에 도달 못하거나(DNS/네트워크/타임아웃) 비정상
+        # 응답이면 여기서 예외가 그대로 터진다. silent=1은 App.vue가 페이지
+        # 로드 시 자동으로 거는 시도라, 여기서 그냥 죽으면 사용자가 로그인
+        # 게이트 화면조차 못 본다(실제로 겪은 버그) — 크래시 대신 이미 있는
+        # "조용한 재인증 실패" 경로로 안전하게 넘어간다.
+        logger.warning("SSO 로그인 시작 실패(silent=%s): %s: %s", silent, type(exc).__name__, exc)
+        reason = "broker_unreachable"
+        if silent:
+            return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_required=1&sso_error={reason}")
+        # 이 엔드포인트는 브라우저 navigation 전용이라 JSON 에러 바디를 읽을
+        # 소비자가 없다 — 게이트 화면 안에서 에러 배너로 보여줄 수 있도록
+        # 프론트로 리다이렉트한다(raw 502 JSON을 그대로 보여주는 대신).
+        return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}")
 
 
 @router.get("/sso/callback")
@@ -166,6 +183,15 @@ async def sso_callback(request: Request) -> RedirectResponse:
             # 게이트를 띄운다. 여기서 자동으로 다시 시도하면 무한 리다이렉트 루프가 된다.
             return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_required=1")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="SSO 로그인에 실패했습니다.")
+    except Exception as exc:
+        # OAuthError가 아닌 실패(토큰/JWKS 엔드포인트 네트워크 오류 등) — IdP가
+        # 로그인을 "거부"한 게 아니라 브로커에 도달조차 못한 경우라 구분해서
+        # 프론트에 알려준다(/sso/login의 authorize_redirect 예외 처리와 같은 원칙).
+        logger.warning("SSO 콜백 중 브로커 통신 실패(silent=%s): %s: %s", was_silent, type(exc).__name__, exc)
+        reason = "broker_unreachable"
+        if was_silent:
+            return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_required=1&sso_error={reason}")
+        return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}")
 
     claims = token.get("userinfo") or {}
     sso_id = str(claims.get(SSO_USER_ID_CLAIM, "")).strip()
