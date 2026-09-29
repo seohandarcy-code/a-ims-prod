@@ -107,6 +107,16 @@ SSO_USER_ID_CLAIM = os.getenv("SSO_USER_ID_CLAIM", "").strip() or "email"
 # SSO 게이트를 잘 알려진 비밀번호로 그냥 우회할 수 있게 된다).
 SSO_ALLOW_LOCAL_LOGIN = os.getenv("SSO_ALLOW_LOCAL_LOGIN", "").strip().lower() == "true"
 
+# SSO 안정화 기간 임시 조치 — 실제 로그인 시도(버튼 클릭)가 IdP 거부(OAuthError)
+# 또는 미등록 계정(access_denied)으로 실패해도, 차단 화면 대신 조회 전용
+# "게스트" 세션을 내준다(role="guest" — require_viewer는 통과, require_admin은
+# 여전히 막음). 조용한 자동 재인증(silent) 실패는 절대 포함하지 않는다 — 안
+# 그러면 로그인 시도조차 없는 모든 첫 방문자가 게스트가 되어 접근 제어가
+# 무의미해진다. 미등록 계정 거부까지 포함하면 "막으려던 사람이 오히려 게스트로
+# 들어오는" 역설이 있다는 걸 알고도 의도적으로 켠 것 — SSO가 안정적으로
+# 검증되면 반드시 다시 끌 것. 기본값 false.
+SSO_GUEST_MODE_ON_LOGIN_FAILURE = os.getenv("SSO_GUEST_MODE_ON_LOGIN_FAILURE", "").strip().lower() == "true"
+
 # OAuth state/nonce를 담는 Starlette SessionMiddleware 서명 키. 이 세션은 로그인
 # 리다이렉트가 왕복하는 짧은 시간에만 쓰이므로(로그인 자체의 세션이 아님 —
 # 그건 AdminAuthStore가 별도 관리), 로컬 dev에서는 비워두면 프로세스 기동마다

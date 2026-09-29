@@ -178,6 +178,89 @@ def test_sso_callback_non_silent_failure_returns_401(monkeypatch: pytest.MonkeyP
     assert callback_res.status_code == 401
 
 
+def test_sso_callback_oauth_error_falls_back_to_guest_when_flag_enabled(monkeypatch: pytest.MonkeyPatch):
+    """SSO_GUEST_MODE_ON_LOGIN_FAILURE가 켜져 있으면, 실제 로그인 시도(non-silent)가
+    IdP에 거부돼도 401로 막는 대신 조회 전용 게스트 세션을 내준다. 그 세션으로
+    조회 API는 되지만 편집 API(require_admin)는 여전히 막혀야 한다."""
+    from authlib.integrations.base_client import OAuthError
+
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_GUEST_MODE_ON_LOGIN_FAILURE", True)
+    monkeypatch.setattr("app.api.deps.AUTH_MODE", "sso")
+
+    mock_sso = AsyncMock()
+    mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
+    mock_sso.authorize_access_token.side_effect = OAuthError("access_denied")
+    monkeypatch.setattr("app.auth.oidc.oauth.sso", mock_sso, raising=False)
+
+    with TestClient(app) as client:
+        login_res = client.get("/api/v1/auth/sso/login", follow_redirects=False)
+        assert login_res.status_code == 307
+
+        callback_res = client.get("/api/v1/auth/sso/callback", follow_redirects=False)
+        assert callback_res.status_code == 307
+        location = callback_res.headers["location"]
+        assert "role=guest" in location
+
+        token = location.split("token=")[1].split("&")[0]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        r = client.get("/api/v1/meta", headers=headers)
+        assert r.status_code == 200
+
+        r = client.get("/api/v1/admin/raw-data", headers=headers)
+        assert r.status_code == 403
+
+
+def test_sso_callback_unregistered_account_falls_back_to_guest_when_flag_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_GUEST_MODE_ON_LOGIN_FAILURE", True)
+    # 빈 allowlist는 "누구나 허용"으로 취급되므로(app/auth/oidc.py의
+    # is_allowed_by_claims), 매칭 안 되는 값을 채워 브레이크글래스로 admin
+    # 등록이 안 되게 한다 — 진짜 미등록 계정 시나리오를 만들기 위함.
+    monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
+    monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
+
+    mock_sso = AsyncMock()
+    mock_sso.authorize_access_token.return_value = {"userinfo": {"email": "unregistered@example.com"}}
+    monkeypatch.setattr("app.auth.oidc.oauth.sso", mock_sso, raising=False)
+
+    with TestClient(app) as client:
+        r = client.get("/api/v1/auth/sso/callback", follow_redirects=False)
+
+    assert r.status_code == 307
+    assert "role=guest" in r.headers["location"]
+
+
+def test_sso_callback_silent_failures_never_fall_back_to_guest(monkeypatch: pytest.MonkeyPatch):
+    """플래그가 켜져 있어도 silent(자동 조용한 재인증) 실패는 게스트로 전환하지
+    않는다 — 로그인 시도조차 없었던 첫 방문자까지 게스트가 되면 접근 제어가
+    무의미해지기 때문."""
+    from authlib.integrations.base_client import OAuthError
+
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_GUEST_MODE_ON_LOGIN_FAILURE", True)
+
+    mock_sso = AsyncMock()
+    mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
+    mock_sso.authorize_access_token.side_effect = OAuthError("login_required")
+    monkeypatch.setattr("app.auth.oidc.oauth.sso", mock_sso, raising=False)
+
+    with TestClient(app) as client:
+        login_res = client.get("/api/v1/auth/sso/login?silent=1", follow_redirects=False)
+        assert login_res.status_code == 307
+
+        callback_res = client.get("/api/v1/auth/sso/callback", follow_redirects=False)
+
+    assert callback_res.status_code == 307
+    assert callback_res.headers["location"] == "/#sso_required=1"
+
+
 def test_sso_login_silent_network_failure_redirects_with_error_reason(monkeypatch: pytest.MonkeyPatch):
     """authorize_redirect가 OAuthError가 아닌 일반 예외(브로커 discovery 조회
     실패 등)를 던지면, silent=1일 때 500으로 죽는 대신 "조용한 재인증 실패"와

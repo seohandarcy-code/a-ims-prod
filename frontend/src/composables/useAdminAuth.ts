@@ -11,7 +11,7 @@ import {
 // prompt=none으로 IdP(Keycloak/사내 SSO) 자체의 세션을 다시 물어보는 방식으로
 // 해결한다 — 우리 쪽엔 아무것도 영속화하지 않는다.
 const token = ref<string | null>(null)
-const role = ref<'admin' | 'user' | null>(null)
+const role = ref<'admin' | 'user' | 'guest' | null>(null)
 const userName = ref<string | null>(null)
 const userTeam = ref<string | null>(null)
 // 조용한 재인증(prompt=none)이 "IdP에 세션 없음"으로 끝났다는 신호 — 이때만 수동
@@ -35,6 +35,9 @@ const dataVersion = ref(0)
 
 const isAuthed = computed(() => token.value !== null)
 const isAdmin = computed(() => role.value === 'admin')
+// SSO 로그인 실제 실패(IdP 거부/미등록) 시 임시로 내주는 조회 전용 세션 —
+// app/config.py의 SSO_GUEST_MODE_ON_LOGIN_FAILURE 참고.
+const isGuest = computed(() => role.value === 'guest')
 
 // SSO 콜백(app/api/auth.py의 /sso/callback)이 로그인 성공 후
 // "/#token=...&expires_in=...&role=..." 형태로, 조용한 재인증(prompt=none)이 IdP
@@ -69,7 +72,8 @@ function consumeSsoCallbackToken(): void {
   const ssoToken = params.get('token')
   if (ssoToken) {
     token.value = ssoToken
-    role.value = params.get('role') === 'admin' ? 'admin' : 'user'
+    const r = params.get('role')
+    role.value = r === 'admin' ? 'admin' : r === 'guest' ? 'guest' : 'user'
     userName.value = params.get('name')
     userTeam.value = params.get('team')
   }
@@ -139,6 +143,7 @@ export function useAdminAuth() {
     userTeam,
     isAuthed,
     isAdmin,
+    isGuest,
     ssoRequired,
     accessDenied,
     ssoError,

@@ -37,6 +37,7 @@ from app.config import (
     FRONTEND_BASE_URL,
     SSO_ADMIN_ALLOWLIST,
     SSO_ALLOW_LOCAL_LOGIN,
+    SSO_GUEST_MODE_ON_LOGIN_FAILURE,
     SSO_REDIRECT_URI,
     SSO_USER_ID_CLAIM,
 )
@@ -182,6 +183,14 @@ async def sso_callback(request: Request) -> RedirectResponse:
             # 조용한 재인증 실패(IdP 세션 없음) — 프론트는 이걸 보고 수동 로그인
             # 게이트를 띄운다. 여기서 자동으로 다시 시도하면 무한 리다이렉트 루프가 된다.
             return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_required=1")
+        if SSO_GUEST_MODE_ON_LOGIN_FAILURE:
+            # SSO 안정화 기간 임시 조치(app/config.py 참고) — 실제 로그인 시도가
+            # IdP에 거부돼도 차단 대신 조회 전용 게스트 세션을 내준다.
+            logger.warning("SSO 로그인 거부 — 게스트 모드로 폴백: %s", exc)
+            guest_token, guest_expires_in = get_auth_store().issue_session("guest")
+            return RedirectResponse(
+                f"{FRONTEND_BASE_URL}/#token={guest_token}&expires_in={guest_expires_in}&role=guest"
+            )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="SSO 로그인에 실패했습니다.")
     except Exception as exc:
         # OAuthError가 아닌 실패(토큰/JWKS 엔드포인트 네트워크 오류 등) — IdP가
@@ -219,6 +228,14 @@ async def sso_callback(request: Request) -> RedirectResponse:
         # sso_id는 로그인 시도 본인의 식별자이자 관리자가 접근 권한 관리 화면에
         # 그대로 등록해줘야 하는 값이라 로그에 남긴다(클레임 값 전체가 아님).
         logger.warning("등록되지 않은 계정의 로그인 시도: sso_id=%s", sso_id)
+        if not was_silent and SSO_GUEST_MODE_ON_LOGIN_FAILURE:
+            # silent(자동 조용한 재인증)는 제외 — 사용자가 버튼을 누른 적도
+            # 없는데 게스트로 들어가게 두지 않는다. app/config.py 참고.
+            logger.warning("미등록 계정 — 게스트 모드로 폴백: sso_id=%s", sso_id)
+            guest_token, guest_expires_in = get_auth_store().issue_session("guest")
+            return RedirectResponse(
+                f"{FRONTEND_BASE_URL}/#token={guest_token}&expires_in={guest_expires_in}&role=guest"
+            )
         return RedirectResponse(f"{FRONTEND_BASE_URL}/#access_denied=1")
 
     role = "admin" if user.is_admin else "user"

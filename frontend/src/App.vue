@@ -20,12 +20,17 @@
         v-if="showUserBadge"
         class="current-user-badge"
       >
-        <span class="current-user-team">{{ userTeam || '팀 미지정' }}</span>
-        <span class="current-user-name">{{ userName }}</span>
-        <span
-          v-if="isAdmin"
-          class="current-user-admin-tag"
-        >관리자</span>
+        <template v-if="isGuest">
+          <span class="current-user-guest-tag">게스트 · SSO 로그인 실패</span>
+        </template>
+        <template v-else>
+          <span class="current-user-team">{{ userTeam || '팀 미지정' }}</span>
+          <span class="current-user-name">{{ userName }}</span>
+          <span
+            v-if="isAdmin"
+            class="current-user-admin-tag"
+          >관리자</span>
+        </template>
       </div>
     </header>
 
@@ -148,6 +153,7 @@ const {
   token,
   isAuthed,
   isAdmin,
+  isGuest,
   userName,
   userTeam,
   ssoRequired,
@@ -213,7 +219,9 @@ const ssoErrorMessage = computed(
 // local 모드는 개인별 계정 개념이 없어 표시할 게 없다.
 // 로컬 비밀번호 폴백 로그인(SSO_ALLOW_LOCAL_LOGIN)은 userName을 안 채우므로,
 // 실제 SSO로 들어온 세션에서만 배지를 보여준다(둘 다 "관리자"로 보이면 헷갈림).
-const showUserBadge = computed(() => authMode.value === 'sso' && canShowDashboard.value && !!userName.value)
+const showUserBadge = computed(
+  () => authMode.value === 'sso' && canShowDashboard.value && (!!userName.value || isGuest.value),
+)
 
 function goToInteractiveLogin(): void {
   window.location.href = SSO_LOGIN_URL
@@ -315,6 +323,15 @@ onMounted(async () => {
   background: var(--select-fill);
   color: var(--select-fill-text);
   font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.current-user-guest-tag {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--tone-warn-border);
+  color: var(--tone-warn-border);
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
