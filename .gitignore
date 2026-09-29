@@ -13,6 +13,7 @@ frontend/dist/
 frontend/.env
 nginx/logs/
 nginx/temp/
+nginx/nginx.generated.conf
 legacy/.venv/
 legacy/__pycache__/
 legacy/**/__pycache__/

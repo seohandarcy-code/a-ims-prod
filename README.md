@@ -38,6 +38,12 @@ powershell -ExecutionPolicy Bypass -File scripts\start-dev.ps1
 ```
 Open http://127.0.0.1:8080 — Nginx가 `/api/*`는 FastAPI(8000)로, 나머지는 Vite dev server(5173)로 프록시한다.
 
+포트 충돌 시(다른 프로그램이 8000/5173/8080을 이미 쓰는 경우) 환경변수로 세 포트를 한번에 바꿀 수 있다 — `start-dev.ps1`/`stop-dev.ps1` 둘 다 같은 변수를 본다:
+```powershell
+$env:BACKEND_PORT=8001; $env:VITE_PORT=5174; $env:NGINX_PORT=8081
+powershell -ExecutionPolicy Bypass -File scripts\start-dev.ps1
+```
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\stop-dev.ps1
 ```

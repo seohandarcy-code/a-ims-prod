@@ -1,6 +1,10 @@
-param()
+param(
+    [int]$BackendPort = $(if ($env:BACKEND_PORT) { [int]$env:BACKEND_PORT } else { 8000 }),
+    [int]$VitePort    = $(if ($env:VITE_PORT)    { [int]$env:VITE_PORT }    else { 5173 }),
+    [int]$NginxPort   = $(if ($env:NGINX_PORT)   { [int]$env:NGINX_PORT }   else { 8080 })
+)
 
-$ports = [ordered]@{ "8000" = "backend (uvicorn)"; "5173" = "frontend (vite)"; "8080" = "nginx" }
+$ports = [ordered]@{ "$BackendPort" = "backend (uvicorn)"; "$VitePort" = "frontend (vite)"; "$NginxPort" = "nginx" }
 
 foreach ($portKey in $ports.Keys) {
     $port = [int]$portKey
