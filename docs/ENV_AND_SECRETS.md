@@ -11,8 +11,8 @@
 | 변수명 | 용도 | 기본값/예시 | Secret? | 배포 출처 | 비고 |
 |---|---|---|---|---|---|
 | `APP_ENV` | 실행 환경 구분(참고용) | `development` | 아니오 | ConfigMap | **코드에서 실제로 읽지 않음** — 표기만 해둔 값 |
-| `HOST` | 바인드 호스트(참고용) | `127.0.0.1` | 아니오 | ConfigMap | **코드에서 실제로 읽지 않음** — 실제 바인드 주소는 `scripts/start-dev.ps1`의 uvicorn 인자가 결정. 바꾸려면 그 스크립트를 직접 고치거나 uvicorn을 수동으로 `--host`/`--port` 지정해 실행 |
-| `PORT` | 바인드 포트(참고용) | `8000` | 아니오 | ConfigMap | **코드에서 실제로 읽지 않음** — 위 `HOST`와 동일 |
+| `HOST` | 바인드 호스트 | `127.0.0.1` | 아니오 | ConfigMap | **코드에서 실제로 읽지 않음, 의도적** — 바인드 주소(예: `0.0.0.0`으로 사내망 노출)는 보안에 영향을 주므로 env var 하나로 조용히 안 바뀌게 분리해뒀다. 바꾸려면 `scripts/start-dev.ps1`을 직접 고치거나 uvicorn을 수동으로 `--host` 지정해 실행 |
+| `PORT` | 바인드 포트 | `8000` | 아니오 | ConfigMap | `scripts/start-dev.ps1`/`stop-dev.ps1`이 이 값을 읽어 uvicorn `--port`로 그대로 넘긴다(다른 프로그램이 8000을 쓰고 있을 때만 바꾸면 됨). `HOST`와 달리 포트 자체는 보안 영향이 없어 자동 연결해뒀다 |
 | `DATA_DIR` | 데이터 디렉터리(PVC 마운트 경로) | `data` | 아니오 | ConfigMap | `.dat` 시딩 소스, SQLite 파일이 이 아래에 위치 |
 | `CURRENT_YEAR` | 기준 연도 | `2026` | 아니오 | ConfigMap | |
 | `CURRENT_MONTH_OVERRIDE` | 기준월 수동 지정(비우면 자동 추정) | (빈 값) | 아니오 | ConfigMap | 운영에서는 보통 비움 |
@@ -138,6 +138,17 @@
 | 변수명 | 용도 | 기본값/예시 | Secret? | 배포 출처 | 비고 |
 |---|---|---|---|---|---|
 | `VITE_API_BASE_URL` | 백엔드 API 베이스 URL | (빈 값) | 아니오 | ConfigMap(빌드 타임) | PDEP Vue 템플릿은 `.env` 하나만 쓰고 배포 단계별로 CI가 값을 주입하는 것으로 추정(`pdep-vue-template-guide.md` §3, 미확정) |
+| `FRONTEND_PORT` | vite 개발 서버 자체가 리슨할 포트 | `5173` | 아니오 | (로컬 dev 전용) | `scripts/start-dev.ps1`/`stop-dev.ps1`이 읽어 vite `--port`로 넘긴다. `VITE_` 접두사를 안 붙인 이유: 그 접두사는 브라우저 번들에 노출되는 값이라, 개발 서버 포트처럼 브라우저 코드가 몰라도 되는 값은 접두사 규칙 밖에 둠 |
+
+## nginx (`nginx/.env.example`, 신규)
+
+로컬 dev 리버스 프록시(`scripts/start-dev.ps1`)의 리슨 포트도 `.env` 파일로 관리한다 —
+backend/frontend와 같은 관례를 nginx에도 맞춘 것. 실제 값은 `nginx/.env`(gitignore
+대상)에, 커밋되는 건 `nginx/.env.example`뿐이다.
+
+| 변수명 | 용도 | 기본값/예시 | Secret? | 배포 출처 | 비고 |
+|---|---|---|---|---|---|
+| `NGINX_PORT` | nginx가 로컬 dev에서 리슨할 포트 | `8080` | 아니오 | (로컬 dev 전용) | `scripts/start-dev.ps1`이 `nginx/nginx.conf.template`을 이 값으로 치환해 `nginx/nginx.generated.conf`를 만들고 그걸로 기동한다 |
 
 ## 향후 단계 예고 (TBD — 아직 코드에 없음)
 

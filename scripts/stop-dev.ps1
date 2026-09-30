@@ -1,8 +1,18 @@
 param(
-    [int]$BackendPort = $(if ($env:BACKEND_PORT) { [int]$env:BACKEND_PORT } else { 8000 }),
-    [int]$VitePort    = $(if ($env:VITE_PORT)    { [int]$env:VITE_PORT }    else { 5173 }),
-    [int]$NginxPort   = $(if ($env:NGINX_PORT)   { [int]$env:NGINX_PORT }   else { 8080 })
+    [int]$BackendPort = 0,
+    [int]$VitePort = 0,
+    [int]$NginxPort = 0
 )
+
+$root = Split-Path -Parent $PSScriptRoot
+
+# start-dev.ps1과 동일한 우선순위로 포트를 계산한다 — 여기서도 .env 파일
+# 값이 바뀌어 있으면 자동으로 그 포트를 찾아서 끈다.
+. "$PSScriptRoot\_ports.ps1"
+$defaultPorts = Get-DevPorts -Root $root
+if ($BackendPort -eq 0) { $BackendPort = $defaultPorts.BackendPort }
+if ($VitePort -eq 0) { $VitePort = $defaultPorts.VitePort }
+if ($NginxPort -eq 0) { $NginxPort = $defaultPorts.NginxPort }
 
 $ports = [ordered]@{ "$BackendPort" = "backend (uvicorn)"; "$VitePort" = "frontend (vite)"; "$NginxPort" = "nginx" }
 

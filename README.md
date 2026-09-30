@@ -38,11 +38,20 @@ powershell -ExecutionPolicy Bypass -File scripts\start-dev.ps1
 ```
 Open http://127.0.0.1:8080 — Nginx가 `/api/*`는 FastAPI(8000)로, 나머지는 Vite dev server(5173)로 프록시한다.
 
-포트 충돌 시(다른 프로그램이 8000/5173/8080을 이미 쓰는 경우) 환경변수로 세 포트를 한번에 바꿀 수 있다 — `start-dev.ps1`/`stop-dev.ps1` 둘 다 같은 변수를 본다:
+포트 충돌 시(다른 프로그램이 8000/5173/8080을 이미 쓰는 경우) 각 컴포넌트의 `.env` 파일에 포트를 적으면 `start-dev.ps1`/`stop-dev.ps1`이 자동으로 읽어서 반영한다 — 파일 3개 중 바꿀 것만 채우면 됨:
+
+| 파일 | 변수 | 기본값 |
+|---|---|---|
+| `backend/.env` | `PORT` | 8000 |
+| `frontend/.env` | `FRONTEND_PORT` | 5173 |
+| `nginx/.env` | `NGINX_PORT`(새로 만들어야 함 — `nginx/.env.example` 참고) | 8080 |
+
 ```powershell
-$env:BACKEND_PORT=8001; $env:VITE_PORT=5174; $env:NGINX_PORT=8081
+# 예: backend/.env에 PORT=8001, frontend/.env에 FRONTEND_PORT=5174, nginx/.env에 NGINX_PORT=8081을 적어둔 뒤
 powershell -ExecutionPolicy Bypass -File scripts\start-dev.ps1
 ```
+
+일회성으로만 다른 포트를 쓰고 싶으면 `.env`를 안 건드리고 파라미터로도 덮어쓸 수 있다(`-BackendPort`/`-VitePort`/`-NginxPort`, 또는 `$env:BACKEND_PORT` 등 세션 환경변수) — `.env` 값보다 우선 적용된다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\stop-dev.ps1

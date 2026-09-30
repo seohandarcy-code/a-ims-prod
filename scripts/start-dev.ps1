@@ -1,10 +1,20 @@
 param(
-    [int]$BackendPort = $(if ($env:BACKEND_PORT) { [int]$env:BACKEND_PORT } else { 8000 }),
-    [int]$VitePort    = $(if ($env:VITE_PORT)    { [int]$env:VITE_PORT }    else { 5173 }),
-    [int]$NginxPort   = $(if ($env:NGINX_PORT)   { [int]$env:NGINX_PORT }   else { 8080 })
+    [int]$BackendPort = 0,
+    [int]$VitePort = 0,
+    [int]$NginxPort = 0
 )
 
 $root = Split-Path -Parent $PSScriptRoot
+
+# 포트 우선순위: 위 -BackendPort 등 명시적 파라미터(0이면 "안 줌") >
+# $env:BACKEND_PORT 등 세션 환경변수 > 각 컴포넌트 .env 파일(backend/.env의
+# PORT, frontend/.env의 FRONTEND_PORT, nginx/.env의 NGINX_PORT) > 하드코딩
+# 기본값(8000/5173/8080). 세부 로직은 _ports.ps1 참고.
+. "$PSScriptRoot\_ports.ps1"
+$defaultPorts = Get-DevPorts -Root $root
+if ($BackendPort -eq 0) { $BackendPort = $defaultPorts.BackendPort }
+if ($VitePort -eq 0) { $VitePort = $defaultPorts.VitePort }
+if ($NginxPort -eq 0) { $NginxPort = $defaultPorts.NginxPort }
 
 Write-Host "Starting backend (uvicorn) on http://127.0.0.1:$BackendPort ..."
 Start-Process -FilePath "$root\backend\.venv\Scripts\python.exe" `
@@ -29,8 +39,8 @@ if (-not $nginxExe) {
     New-Item -ItemType Directory -Force -Path "$root\nginx\temp" | Out-Null
 
     # 포트가 하드코딩된 nginx.conf 대신, 템플릿에서 매번 실제 포트로 치환한
-    # 설정을 생성해 기동한다 — 세 서비스 포트를 한 곳(파라미터/환경변수)에서만
-    # 바꿔도 nginx가 항상 같이 맞춰지게 하기 위함.
+    # 설정을 생성해 기동한다 — 세 서비스 포트를 .env 파일에서만 바꿔도 nginx가
+    # 항상 같이 맞춰지게 하기 위함.
     $template = Get-Content "$root\nginx\nginx.conf.template" -Raw
     $generated = $template.
         Replace('__NGINX_PORT__', "$NginxPort").
