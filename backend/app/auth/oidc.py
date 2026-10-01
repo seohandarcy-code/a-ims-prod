@@ -19,9 +19,13 @@ validate_aud). 로컬 Keycloak처럼 진짜 멀티테넌트 realm은 client_id �
 """
 from __future__ import annotations
 
+import logging
+
 from authlib.integrations.starlette_client import OAuth
 
-from app.config import SSO_CLIENT_ID, SSO_CLIENT_SECRET, SSO_ISSUER_URL
+from app.config import SSO_CA_BUNDLE_PATH, SSO_CLIENT_ID, SSO_CLIENT_SECRET, SSO_ISSUER_URL
+
+logger = logging.getLogger(__name__)
 
 # issuer URL만 있으면 브로커 연동을 시도한다 — client_id/secret은 위 설명대로
 # 이 issuer가 이미 서비스별로 유일하게 발급된 경우 없어도 된다.
@@ -30,12 +34,25 @@ SSO_BROKER_CONFIGURED = bool(SSO_ISSUER_URL)
 oauth = OAuth()
 
 if SSO_BROKER_CONFIGURED:
+    client_kwargs: dict = {"scope": "openid email profile"}
+    if SSO_CA_BUNDLE_PATH:
+        # authlib의 client_kwargs는 discovery/token/userinfo 요청에 쓰이는
+        # httpx 클라이언트 생성자에 그대로 전달된다. verify는
+        # authlib.integrations.httpx_client.utils.HTTPX_CLIENT_KWARGS에 포함된
+        # 공식 지원 키라, 이 세 요청 전부에 내부 CA 신뢰를 한 번에 적용할 수
+        # 있는 가장 정확한 주입 지점이다(app/config.py 참고).
+        if SSO_CA_BUNDLE_PATH.exists():
+            client_kwargs["verify"] = str(SSO_CA_BUNDLE_PATH)
+        else:
+            logger.warning(
+                "SSO_CA_BUNDLE_PATH가 설정됐지만 파일을 찾을 수 없습니다: %s", SSO_CA_BUNDLE_PATH
+            )
     oauth.register(
         name="sso",
         server_metadata_url=f"{SSO_ISSUER_URL.rstrip('/')}/.well-known/openid-configuration",
         client_id=SSO_CLIENT_ID,
         client_secret=SSO_CLIENT_SECRET,
-        client_kwargs={"scope": "openid email profile"},
+        client_kwargs=client_kwargs,
     )
 
 

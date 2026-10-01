@@ -25,19 +25,20 @@
 | `DB_USER` | DB 사용자명 | (빈 값) | **예** | **Secret** | |
 | `DB_PASSWORD` | DB 비밀번호 | (빈 값) | **예** | **Secret** | |
 | `ADMIN_BOOTSTRAP_PASSWORD` | 관리자 초기 비밀번호(재기동마다 이 값으로 리셋) | (빈 값 → 기존 `"0000"`) | **예** | **Secret** | `backend/app/auth/state.py` 참고 |
-| `AUTH_MODE` | 로그인 게이트 스위치 | `local` | 아니오 | ConfigMap | `local`(대시보드 공개, 관리자 편집만 아이디/비밀번호 게이트) 또는 `sso`(대시보드 전체가 로그인 게이트, user/admin 2단계 role). 아래 "SSO 로그인" 절 참고 |
-| `SESSION_SECRET_KEY` | OAuth state/nonce 세션 쿠키 서명 키(`SessionMiddleware`) | (빈 값 → 기동마다 무작위 생성) | **예** | **Secret** | `AUTH_MODE`와 무관하게 항상 로드되지만 실제로 쓰이는 건 SSO 로그인 흐름뿐. 아래 "SSO 로그인" 절 참고 |
-| `SESSION_COOKIE_SECURE` | 세션 쿠키 Secure 플래그 | `false` | 아니오 | ConfigMap | 실제 HTTPS 배포에서는 `true`로 설정(안 그러면 쿠키가 평문 HTTP로도 전송 가능한 상태로 남음). `true`인데 배포가 HTTP면 브라우저가 쿠키 저장을 거부해 로그인이 깨짐 |
-| `FRONTEND_BASE_URL` | SSO 콜백이 리다이렉트할 프론트 도메인 | (빈 값 → 상대경로 `/#...`) | 아니오 | ConfigMap | 프론트/백엔드가 같은 origin이면 비움. 도메인이 분리되면 프론트의 실제 도메인(`https://ims.company.com` 등)을 채워야 콜백이 백엔드 자기 자신이 아니라 프론트로 정확히 돌아감 |
-| `SSO_ISSUER_URL` | OIDC 발급자(디스커버리) URL | (빈 값) | 아니오 | ConfigMap | `{값}/.well-known/openid-configuration`을 자동 조회. 이 값 하나만 있어도 브로커 연동이 활성화된다(`SSO_BROKER_CONFIGURED`) — 아래 비고 참고 |
-| `SSO_CLIENT_ID` | OIDC 클라이언트 ID | (빈 값) | 아니오 | ConfigMap | **비워도 된다.** 서비스 URL을 등록하면 그 서비스 전용 고유 issuer 주소를 개별 발급하는 브로커(그 고유 URL 자체가 클라이언트 식별자 역할)는 별도 client_id가 없다 — `SSO_ISSUER_URL`만으로 연동되도록 코드가 지원한다(`backend/app/auth/oidc.py`). 범용 멀티테넌트 IdP(예: 로컬 Keycloak)는 여전히 채워야 함 |
-| `SSO_CLIENT_SECRET` | OIDC 클라이언트 시크릿 | (빈 값) | **예** | **Secret** | 위와 동일한 이유로 비워도 된다 — 비어 있으면 authlib이 토큰 엔드포인트 인증 방식을 자동으로 "none"으로 처리한다 |
-| `SSO_REDIRECT_URI` | IdP가 인가 코드를 돌려줄 콜백 URL | (빈 값) | 아니오 | ConfigMap | IdP 클라이언트 설정의 Redirect URI와 정확히 일치해야 함 |
-| `SSO_ADMIN_ALLOWLIST` | 브레이크글래스 admin 계정 목록(콤마 구분) | (빈 값) | **예**(계정 식별자이므로) | **Secret** | 실제 로그인 허용 여부는 DB `allowed_users`가 결정 — 이 목록은 그게 비어도 항상 admin으로 복구되는 안전망. 최초 배포 시 반드시 채울 것. 아래 "SSO 로그인" 절 참고 |
-| `SSO_USER_ID_CLAIM` | `allowed_users.sso_id` 및 브레이크글래스 목록과 대조할 OIDC 클레임 이름 | `email` | 아니오 | ConfigMap | 표준 OIDC 클레임 아님 — IdP마다 다르므로 IT팀 확인 필요(사번/UPN 등 권장) |
-| `SSO_ALLOW_LOCAL_LOGIN` | `AUTH_MODE=sso`에서도 기존 로컬 비밀번호 로그인(`/login`)을 같이 열어둘지 | `false` | 아니오 | ConfigMap | 브로커 `client_id` 발급 전 부트스트랩용. **공유 서버에서 켤 거면 `ADMIN_BOOTSTRAP_PASSWORD`를 기본값에서 반드시 변경할 것** — 아래 "SSO 로그인" 절 참고 |
-| `SSO_GUEST_MODE_ON_LOGIN_FAILURE` | 실제 로그인 시도가 IdP 거부/미등록으로 실패해도 차단 대신 조회 전용 게스트 세션을 내줄지 | `false` | 아니오 | ConfigMap | **SSO 안정화 기간 임시 조치** — silent(자동 재인증) 실패는 절대 포함 안 함, IdP 거부와 미등록 계정 둘 다 포함(접근 제어가 그만큼 약해짐을 감수하는 것). SSO가 안정적으로 검증되면 반드시 다시 끌 것 — 아래 "SSO 로그인" 절 참고 |
-| `SSO_SILENT_LOGIN_ENABLED` | 페이지 로드 시 자동으로 조용한 재인증(`prompt=none`)을 시도할지 | `true` | 아니오 | ConfigMap | 사내 웹 격리 솔루션(Menlo Security 등)이 이 자동 리다이렉트 자체를 가로채는 환경에서 `false`로 끈다 — 그러면 항상 로그인 게이트부터 뜨고, 사용자가 "회사 계정으로 로그인" 버튼을 직접 눌러야만 OIDC 흐름이 시작된다(모든 로그인 시도가 `/sso/login`을 거치므로 state가 정상적으로 세션에 저장된 채 출발함) — 아래 "SSO 로그인" 절 참고 |
+| `AUTH_MODE` | 로그인 게이트 스위치(A — 필수) | `local` | 아니오 | ConfigMap | `local`(대시보드 공개, 관리자 편집만 아이디/비밀번호 게이트) 또는 `sso`(대시보드 전체가 로그인 게이트, user/admin 2단계 role). 아래 "SSO 로그인" 절 참고 |
+| `SSO_ISSUER_URL` | OIDC 발급자(디스커버리) URL(B — 필수) | (빈 값) | 아니오 | ConfigMap | `{값}/.well-known/openid-configuration`을 자동 조회. 이 값 하나만 있어도 브로커 연동이 활성화된다(`SSO_BROKER_CONFIGURED`) — 아래 비고 참고 |
+| `SSO_REDIRECT_URI` | IdP가 인가 코드를 돌려줄 콜백 URL(B — 필수) | (빈 값) | 아니오 | ConfigMap | IdP 클라이언트 설정의 Redirect URI와 정확히 일치해야 함 |
+| `SSO_CLIENT_ID` | OIDC 클라이언트 ID(B — 브로커에 따라 선택) | (빈 값) | 아니오 | ConfigMap | **비워도 된다.** 서비스 URL을 등록하면 그 서비스 전용 고유 issuer 주소를 개별 발급하는 브로커(그 고유 URL 자체가 클라이언트 식별자 역할)는 별도 client_id가 없다 — `SSO_ISSUER_URL`만으로 연동되도록 코드가 지원한다(`backend/app/auth/oidc.py`). 범용 멀티테넌트 IdP(예: 로컬 Keycloak)는 여전히 채워야 함 |
+| `SSO_CLIENT_SECRET` | OIDC 클라이언트 시크릿(B — 브로커에 따라 선택) | (빈 값) | **예** | **Secret** | 위와 동일한 이유로 비워도 된다 — 비어 있으면 authlib이 토큰 엔드포인트 인증 방식을 자동으로 "none"으로 처리한다 |
+| `SSO_ADMIN_ALLOWLIST` | 브레이크글래스 admin 계정 목록(콤마 구분)(C — 필수) | (빈 값) | **예**(계정 식별자이므로) | **Secret** | 실제 로그인 허용 여부는 DB `allowed_users`가 결정 — 이 목록은 그게 비어도 항상 admin으로 복구되는 안전망. 최초 배포 시 반드시 채울 것. 아래 "SSO 로그인" 절 참고 |
+| `SSO_USER_ID_CLAIM` | `allowed_users.sso_id` 및 브레이크글래스 목록과 대조할 OIDC 클레임 이름(C — 필수) | `email` | 아니오 | ConfigMap | 표준 OIDC 클레임 아님 — IdP마다 다르므로 IT팀 확인 필요(사번/UPN 등 권장) |
+| `SESSION_SECRET_KEY` | OAuth state/nonce 세션 쿠키 서명 키(`SessionMiddleware`)(D — 배포 환경별) | (빈 값 → 기동마다 무작위 생성) | **예** | **Secret** | `AUTH_MODE`와 무관하게 항상 로드되지만 실제로 쓰이는 건 SSO 로그인 흐름뿐. 아래 "SSO 로그인" 절 참고 |
+| `SESSION_COOKIE_SECURE` | 세션 쿠키 Secure 플래그(D — 배포 환경별) | `false` | 아니오 | ConfigMap | 실제 HTTPS 배포에서는 `true`로 설정(안 그러면 쿠키가 평문 HTTP로도 전송 가능한 상태로 남음). `true`인데 배포가 HTTP면 브라우저가 쿠키 저장을 거부해 로그인이 깨짐 |
+| `FRONTEND_BASE_URL` | SSO 콜백이 리다이렉트할 프론트 도메인(D — 배포 환경별) | (빈 값 → 상대경로 `/#...`) | 아니오 | ConfigMap | 프론트/백엔드가 같은 origin이면 비움. 도메인이 분리되면 프론트의 실제 도메인(`https://ims.company.com` 등)을 채워야 콜백이 백엔드 자기 자신이 아니라 프론트로 정확히 돌아감. 요청 scheme에서 추론하지 않고 고정값을 그대로 쓰므로 프록시 헤더 설정이 따로 필요 없음 |
+| `SSO_CA_BUNDLE_PATH` | 내부 CA 인증서(PEM) 파일 경로(E — 문제 생기면) — discovery/token/userinfo 요청에 적용 | (빈 값 → certifi 기본 번들만 신뢰) | 아니오(값은 경로 문자열) | ConfigMap(단, 가리키는 파일 자체는 Secret 기반 Volume mount) | 사내 CA가 발급한 인증서를 쓰는 SSO 브로커(ADFS 등)에서 `SSL: CERTIFICATE_VERIFY_FAILED`가 날 때 설정. **dev 전용 아님** — 아래 "SSO 로그인" 절의 "내부 CA 인증서 신뢰" 하위 절 참고 |
+| `SSO_ALLOW_LOCAL_LOGIN` | `AUTH_MODE=sso`에서도 기존 로컬 비밀번호 로그인(`/login`)을 같이 열어둘지(F — 특수 상황) | `false` | 아니오 | ConfigMap | 브로커 `client_id` 발급 전 부트스트랩용. **공유 서버에서 켤 거면 `ADMIN_BOOTSTRAP_PASSWORD`를 기본값에서 반드시 변경할 것** — 아래 "SSO 로그인" 절 참고 |
+| `SSO_SILENT_LOGIN_ENABLED` | 페이지 로드 시 자동으로 조용한 재인증(`prompt=none`)을 시도할지(F — 특수 상황) | `true` | 아니오 | ConfigMap | 사내 웹 격리 솔루션(Menlo Security 등)이 이 자동 리다이렉트 자체를 가로채는 환경에서 `false`로 끈다 — 그러면 항상 로그인 게이트부터 뜨고, 사용자가 "회사 계정으로 로그인" 버튼을 직접 눌러야만 OIDC 흐름이 시작된다(모든 로그인 시도가 `/sso/login`을 거치므로 state가 정상적으로 세션에 저장된 채 출발함) — 아래 "SSO 로그인" 절 참고 |
+| `SSO_GUEST_MODE_ON_LOGIN_FAILURE` | 실제 로그인 시도가 IdP 거부/미등록으로 실패해도 차단 대신 조회 전용 게스트 세션을 내줄지(F — 특수 상황) | `false` | 아니오 | ConfigMap | **SSO 안정화 기간 임시 조치** — silent(자동 재인증) 실패는 절대 포함 안 함, IdP 거부와 미등록 계정 둘 다 포함(접근 제어가 그만큼 약해짐을 감수하는 것). SSO가 안정적으로 검증되면 반드시 다시 끌 것 — 아래 "SSO 로그인" 절 참고 |
 
 ### 데이터 계층 접속 정보 (`DATABASE_URL` / `DB_*`)
 
@@ -76,6 +77,13 @@
 발급/검증(`backend/app/auth/state.py`)은 두 모드가 공유하므로 이 스위치 하나로만
 전환된다. IdP에 이미 로그인돼 있으면(사내 다른 페이지 등) 버튼 클릭 없이
 `prompt=none` 방식으로 자동 재인증된다 — 아래 README 절 참고.
+
+**빠른 설정 체크리스트**(`backend/.env.example`의 A~F 그룹과 동일한 순서,
+전체 설명은 각 그룹 참고): (A) `AUTH_MODE=sso` → (B) `SSO_ISSUER_URL`/
+`SSO_REDIRECT_URI`(필수) + `SSO_CLIENT_ID`/`SSO_CLIENT_SECRET`(브로커가
+요구하면) → (C) `SSO_ADMIN_ALLOWLIST`(본인 식별자 최소 1개, 락아웃 방지) +
+`SSO_USER_ID_CLAIM` → 나머지 (D) 세션/도메인, (E) 내부 CA 인증서,
+(F) 안정화 스위치는 배포 환경이 특수하거나 문제가 생길 때만 건드리면 된다.
 
 **왜 DB로 관리하나**: 사내 SSO는 직접 관리하지 않는 시스템이라 "IdP 인증 성공 =
 접근 허용"은 위험하다 — 회사 SSO 계정이 있는 누구나(다른 팀 포함) 자동으로 조회
@@ -137,6 +145,38 @@
   출발하므로, 브라우저 주소창에 IdP URL을 직접 입력해 들어갔을 때처럼 콜백에서
   state 불일치로 거부되는 일도 없다. 기본값 `true`(기존 동작 그대로)라 이
   문제를 겪지 않는 환경에는 영향이 없다.
+- **내부 CA 인증서 신뢰(`SSO_CA_BUNDLE_PATH`)**: 사내 SSO 브로커(ADFS 등)가
+  회사 내부 CA가 발급한 인증서를 쓰면, Python(`httpx`/`certifi`)이 그 CA를
+  몰라 discovery/token/userinfo 요청이 `SSL: CERTIFICATE_VERIFY_FAILED`로
+  실패한다(Windows/curl은 시스템 인증서 저장소를 써서 통과하지만 Python은
+  별도 번들이라 실패 — 흔한 함정). 해결 방법은 환경마다 다르다:
+  - **로컬 개발**: 내부 CA의 PEM 파일을 `backend/certs/`(gitignore 대상,
+    `backend/certs/README.md` 참고) 아래에 두고, `backend/.env`에
+    `SSO_CA_BUNDLE_PATH=certs/internal-ca.pem`처럼 `backend/` 기준 상대경로를
+    적는다.
+  - **PDEP 등 실 배포**: 인증서 파일을 Docker 이미지에 구워 넣지 않는다(레지스트리에
+    그대로 노출되는 안티패턴). 대신 인증서 내용을 K8s **Secret**으로 만들고
+    백엔드 Pod에 **Volume으로 마운트**(예: `/app/certs/internal-ca.pem`), 그
+    절대경로를 `SSO_CA_BUNDLE_PATH`에 ConfigMap으로 주입한다. 코드
+    (`app/config.py`/`app/auth/oidc.py`)는 로컬이든 PDEP이든 "그 경로에 파일이
+    있으면 읽고, 없으면 경고만 남긴 채 기존 동작(certifi 기본 신뢰)으로
+    넘어간다"만 알면 되므로 환경별 분기가 없다. Secret 이름/마운트 경로의
+    정확한 명명 규칙은 `<CONFIRM_WITH_PDEP_ADMIN>`.
+  - 내부적으로는 authlib의 `oauth.register(..., client_kwargs={"verify": ...})`로
+    주입한다 — `client_kwargs`가 discovery/token/userinfo 전부에 쓰이는 httpx
+    클라이언트 생성자에 그대로 전달되므로, SSO 네트워크 호출 3곳에 한 번에
+    적용되는 가장 정확한 지점이다.
+  - **"HTTP 개발 환경이라 필요한 임시방편"이 아니다**: 이건 우리 백엔드가
+    OIDC 클라이언트로서 ADFS 자신의 HTTPS 엔드포인트에 아웃바운드 요청을 보낼
+    때 그 서버 인증서를 검증하는 문제라, 우리 앱 자신이 HTTP로 떠 있는지
+    HTTPS로 떠 있는지와 무관하다. 운영 ADFS가 같은 사내 내부 CA를 쓰는 한
+    운영 배포에서도 똑같이 필요하다 — 기준은 "HTTP냐 HTTPS냐"가 아니라
+    "ADFS 인증서를 발급한 CA가 Python 기본 신뢰 목록(certifi)에 있냐"다.
+    이와 별개로, 사용자 브라우저가 Broker/PDEP Ingress와 맺는 HTTPS(그
+    Broker가 내부 HTTP 개발 서버로 TLS를 종료해 전달하는 구조)는 **완전히
+    다른 구간**이고 우리 코드가 관여하지 않는다 — 그 인바운드 TLS termination/
+    re-encryption 개념 전반은 `docs/AD_SSO_Broker_HTTPS_개발환경_가이드.md`
+    참고.
 - 로컬 테스트 IdP(Keycloak) 설치 절차는 `README.md`의 "SSO로 전환해서 로그인
   검증하기" 절 참고. **실제 회사 SSO 브로커에 처음 연결하는 절차**는 `README.md`의
   "다른 서버로 옮겨서 실제 SSO 브로커에 연동하기" 절 참고 — 브로커마다 클레임

@@ -158,12 +158,18 @@ async def sso_login(request: Request, silent: bool = Query(default=False)) -> Re
         # "조용한 재인증 실패" 경로로 안전하게 넘어간다.
         logger.warning("SSO 로그인 시작 실패(silent=%s): %s: %s", silent, type(exc).__name__, exc)
         reason = "broker_unreachable"
+        # 매번 로그 파일을 직접 확인하지 않아도 배너에서 바로 원인을 알 수 있도록
+        # 예외 타입/메시지를 그대로 실어 보낸다(토큰/자격증명이 아니라 순수 진단
+        # 정보라 노출해도 안전하다). 체인이 긴 SSL 에러 등을 대비해 길이를 자른다.
+        detail = urllib.parse.quote_plus(f"{type(exc).__name__}: {exc}"[:300])
         if silent:
-            return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_required=1&sso_error={reason}")
+            return RedirectResponse(
+                f"{FRONTEND_BASE_URL}/#sso_required=1&sso_error={reason}&sso_error_detail={detail}"
+            )
         # 이 엔드포인트는 브라우저 navigation 전용이라 JSON 에러 바디를 읽을
         # 소비자가 없다 — 게이트 화면 안에서 에러 배너로 보여줄 수 있도록
         # 프론트로 리다이렉트한다(raw 502 JSON을 그대로 보여주는 대신).
-        return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}")
+        return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}&sso_error_detail={detail}")
 
 
 @router.get("/sso/callback")
@@ -200,9 +206,12 @@ async def sso_callback(request: Request) -> RedirectResponse:
         # 프론트에 알려준다(/sso/login의 authorize_redirect 예외 처리와 같은 원칙).
         logger.warning("SSO 콜백 중 브로커 통신 실패(silent=%s): %s: %s", was_silent, type(exc).__name__, exc)
         reason = "broker_unreachable"
+        detail = urllib.parse.quote_plus(f"{type(exc).__name__}: {exc}"[:300])
         if was_silent:
-            return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_required=1&sso_error={reason}")
-        return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}")
+            return RedirectResponse(
+                f"{FRONTEND_BASE_URL}/#sso_required=1&sso_error={reason}&sso_error_detail={detail}"
+            )
+        return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}&sso_error_detail={detail}")
 
     claims = token.get("userinfo") or {}
     sso_id = str(claims.get(SSO_USER_ID_CLAIM, "")).strip()

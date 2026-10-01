@@ -365,18 +365,22 @@ cd backend
 
 ### C. 환경변수 체크리스트 — 로컬 Keycloak 값 vs 실제 배포 값
 
+`backend/.env.example`의 "SSO 빠른 설정 체크리스트"(A~F 그룹)와 동일한 순서로
+정리했다 — 필수부터, 배포 환경별로 달라지는 값, 마지막이 특수 상황 대응이다.
+
 | 변수 | 로컬 Keycloak 테스트 때 | 실제 배포에서 |
 |---|---|---|
-| `AUTH_MODE` | `sso` | `sso` |
-| `DATABASE_URL` | 로컬 PostgreSQL | 새 서버의 실제 DB 접속 정보 |
-| `SESSION_SECRET_KEY` | 비워둬도 됨(무작위 생성) | **고정값을 Secret으로 생성**: `python -c "import secrets; print(secrets.token_urlsafe(32))"` — 비워두면 재기동마다 진행 중이던 로그인이 깨짐 |
-| `SESSION_COOKIE_SECURE` | `false`(http) | 배포가 HTTPS면 **반드시 `true`** |
-| `SSO_ISSUER_URL` | `http://127.0.0.1:8180/realms/ims` | 브로커 관리자에게 받은 실제 issuer URL |
-| `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET` | Keycloak에서 직접 발급 | 브로커 관리자가 새 client 등록 후 발급 |
-| `SSO_REDIRECT_URI` | `http://127.0.0.1:8080/api/v1/auth/sso/callback` | 실제 배포 도메인의 콜백 경로(`https://<도메인>/api/v1/auth/sso/callback`) — **브로커에 등록하는 값과 문자 그대로 일치**해야 함(http/https, 트레일링 슬래시, 포트까지) |
-| `FRONTEND_BASE_URL` | 비움(같은 origin) | 프론트/백엔드가 다른 도메인이면 프론트의 실제 도메인 |
-| `SSO_ADMIN_ALLOWLIST` | `ims.admin@example.local` | **본인의 실제 식별자**(아래 D, E 참고 — 브로커가 뭘 보내는지 확인 전엔 추측값으로 시작) |
-| `SSO_USER_ID_CLAIM` | `email`(Keycloak 기본) | 브로커가 실제로 쓰는 클레임 이름(모르면 일단 `email`로 시작 후 E번 절차로 교정) |
+| `AUTH_MODE`(A) | `sso` | `sso` |
+| `SSO_ISSUER_URL`(B) | `http://127.0.0.1:8180/realms/ims` | 브로커 관리자에게 받은 실제 issuer URL |
+| `SSO_REDIRECT_URI`(B) | `http://127.0.0.1:8080/api/v1/auth/sso/callback` | 실제 배포 도메인의 콜백 경로(`https://<도메인>/api/v1/auth/sso/callback`) — **브로커에 등록하는 값과 문자 그대로 일치**해야 함(http/https, 트레일링 슬래시, 포트까지) |
+| `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET`(B) | Keycloak에서 직접 발급 | 브로커 관리자가 새 client 등록 후 발급(발급 안 하는 브로커도 있음 — 위 "환경변수와 Secret" 절 참고) |
+| `SSO_ADMIN_ALLOWLIST`(C) | `ims.admin@example.local` | **본인의 실제 식별자**(아래 D, E 참고 — 브로커가 뭘 보내는지 확인 전엔 추측값으로 시작) |
+| `SSO_USER_ID_CLAIM`(C) | `email`(Keycloak 기본) | 브로커가 실제로 쓰는 클레임 이름(모르면 일단 `email`로 시작 후 E번 절차로 교정) |
+| `DATABASE_URL`(D) | 로컬 PostgreSQL | 새 서버의 실제 DB 접속 정보 |
+| `SESSION_SECRET_KEY`(D) | 비워둬도 됨(무작위 생성) | **고정값을 Secret으로 생성**: `python -c "import secrets; print(secrets.token_urlsafe(32))"` — 비워두면 재기동마다 진행 중이던 로그인이 깨짐 |
+| `SESSION_COOKIE_SECURE`(D) | `false`(http) | 배포가 HTTPS면 **반드시 `true`** |
+| `FRONTEND_BASE_URL`(D) | 비움(같은 origin) | 프론트/백엔드가 다른 도메인이면 프론트의 실제 도메인 |
+| `SSO_CA_BUNDLE_PATH`(E) | 비움(로컬 Keycloak은 공인 인증서 체계 불필요) | 브로커가 내부 CA 인증서를 쓰면 설정(아래 G번 절) — **dev 전용 설정이 아님** |
 | `CORS_ORIGINS` | 로컬 dev 기본값 | 프론트/백엔드가 다른 도메인이면 프론트 도메인 명시 |
 
 `SSO_ADMIN_ALLOWLIST`/`SSO_USER_ID_CLAIM` 조합이 제일 위험하다 — 실제 브로커가
@@ -394,6 +398,13 @@ cd backend
 - 어떤 클레임에 사번/이메일 등 고유 식별자가 담기는지
 - 사내망 방화벽에서 새 서버가 `{ISSUER}/.well-known/openid-configuration`에
   도달 가능한지(사내 전용 브로커라면 특정 대역에서만 열려 있을 수 있음)
+- Broker가 사용자 브라우저에는 HTTPS를 내주고 우리 서버로는 HTTP로 중계하는
+  TLS Termination 구조인지, 아니면 Broker-서버 구간도 HTTPS인 Re-encryption
+  구조인지(`docs/AD_SSO_Broker_HTTPS_개발환경_가이드.md` 25번 섹션 질문) —
+  다만 `SSO_REDIRECT_URI`/`FRONTEND_BASE_URL`이 요청 scheme에서 추론되는 게
+  아니라 `.env`의 고정값을 그대로 쓰므로, 어느 구조든 uvicorn
+  `--proxy-headers` 같은 설정 없이도 OIDC 흐름 자체는 정확하게 동작한다 —
+  이 질문은 순전히 ADFS 인증서(`SSO_CA_BUNDLE_PATH`, 아래 G번) 검토용
 
 ### E. 최초 연동 런북 (실패를 전제로 한 순서)
 
@@ -418,6 +429,12 @@ cd backend
    - `SSO 콜백 실패(silent=False): ...` → OIDC 흐름 자체가 실패한 것(잘못된
      client secret, redirect_uri 불일치, 시계 오차 등) — 예외 메시지를 보고
      브로커 관리자와 함께 원인을 좁힌다.
+   - 로그인 게이트 화면에 빨간 배너로 **"SSO 브로커에 연결하지 못했습니다"**가
+     뜨면(discovery/token 엔드포인트 자체에 도달하지 못한 네트워크 실패,
+     `broker_unreachable`) — 배너 안에 예외 타입/메시지가 그대로 표시되므로
+     서버 로그를 따로 열지 않아도 원인을 바로 확인할 수 있다. `SSL:
+     CERTIFICATE_VERIFY_FAILED`가 보이면 아래 G번 절(내부 CA 인증서 신뢰)을
+     따른다.
 4. 값을 고치고 백엔드를 재기동해 다시 로그인을 시도한다. 로그인되면 "접근 권한
    관리" 화면에서 나머지 팀원을 등록한다(위 "SSO로 전환해서 로그인 검증하기"
    절의 검증 시나리오와 동일한 화면).
@@ -450,6 +467,35 @@ ADMIN_BOOTSTRAP_PASSWORD=change-me-per-environment   # 공유 서버면 반드�
 **주의**: 이 플래그는 SSO 게이트를 비밀번호로 우회하는 것과 같으므로, 본인만
 접근하는 컴퓨터가 아니라 다른 사람도 닿을 수 있는 서버에서 켤 때는
 `ADMIN_BOOTSTRAP_PASSWORD`를 반드시 기본값("0000")이 아닌 값으로 바꿔야 한다.
+
+### G. 회사 내부 CA 인증서 신뢰시키기
+
+사내 SSO 브로커(ADFS 등)가 회사 내부 CA가 발급한 인증서를 쓰면, 위 E번
+런북에서 배너에 `SSL: CERTIFICATE_VERIFY_FAILED`가 보일 수 있다 —
+Windows/curl은 시스템 인증서 저장소를 써서 통과하지만, Python(`httpx`/
+`certifi`)은 별도 CA 번들을 써서 내부 CA를 모르기 때문이다.
+
+1. IT팀/브로커 관리자에게 내부 루트/중간 CA 인증서 파일을 PEM 형식으로
+   받는다(`.cer`/`.crt`로 받았다면 DER일 수 있음 — PEM 변환 필요 시
+   `openssl x509 -inform der -in 원본.cer -out internal-ca.pem`).
+2. 그 파일을 `backend/certs/internal-ca.pem`에 둔다(이 폴더는 git에
+   커밋되지 않는다 — `backend/certs/README.md` 참고).
+3. `backend/.env`에 추가:
+   ```
+   SSO_CA_BUNDLE_PATH=certs/internal-ca.pem
+   ```
+4. 백엔드를 재기동하고 로그인을 다시 시도한다. 파일 경로가 틀리면 백엔드
+   로그에 `SSO_CA_BUNDLE_PATH가 설정됐지만 파일을 찾을 수 없습니다: ...`
+   경고가 남는다.
+
+**PDEP 등 실제 배포에서는 이 폴더를 그대로 쓰지 않는다** — 인증서를 Docker
+이미지에 구워 넣는 건 레지스트리에 그대로 노출되는 안티패턴이다. 대신
+인증서 내용을 K8s Secret으로 만들어 백엔드 Pod에 Volume으로 마운트하고,
+`SSO_CA_BUNDLE_PATH`는 그 마운트된 절대경로(예: `/app/certs/internal-ca.pem`)를
+가리키게 한다 — 코드는 로컬이든 PDEP이든 "그 경로에 파일이 있으면 읽는다"만
+알면 되므로 동일하게 동작한다. 자세한 내용은 `docs/ENV_AND_SECRETS.md`의
+`SSO_CA_BUNDLE_PATH` 설명과 `docs/db-migration-roadmap.md`의 "PDEP 실연동"
+체크리스트 참고.
 
 ## 환경변수와 Secret
 

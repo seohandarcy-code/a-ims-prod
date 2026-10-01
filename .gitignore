@@ -8,6 +8,8 @@ backend/data/*.db
 backend/data/*.db-wal
 backend/data/*.db-shm
 backend/.env
+backend/certs/*
+!backend/certs/README.md
 frontend/node_modules/
 frontend/dist/
 frontend/.env

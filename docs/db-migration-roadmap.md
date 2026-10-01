@@ -88,6 +88,11 @@
 
 ## 4단계: SSO 연동
 
+> 배경 개념(AD/SSO Broker/HTTPS/SSL 인증서의 역할 구분, TLS Termination vs
+> Re-encryption)은 `docs/AD_SSO_Broker_HTTPS_개발환경_가이드.md` 참고 — 이
+> 로드맵 문서는 "우리가 실제로 뭘 했는지"를, 그 문서는 "왜/어떤 구조로
+> 동작하는지"를 다룬다.
+
 `docs/투자관리시스템_고도화_개발계획서_v3.md` §2.2/`docs/투자관리시스템_고도화_개발계획서_v4.md`
 §1.3(d)가 정의한 `AuthProvider`/`AUTH_MODE=local|sso` 이름을 그대로 가져다 썼다.
 다만 **범위는 v3/v4 원안보다 좁다** — 개인별 계정 + `담당자` 매칭 + 행 단위 권한이라는
@@ -335,12 +340,69 @@ AD 계정으로 브로커 포털에 로그인한 상태에서 "서비스 URL"을
   아닌 예외도 같은 원칙(silent면 `#sso_required=1`, 아니면 502)으로 처리.
 - 두 경우 모두 예외 타입/메시지를 로그로 남겨 진단 가능하게 함.
 
+### broker_unreachable 배너에 예외 상세 노출 + 내부 CA 인증서 신뢰 (완료, 2026-10-01)
+
+실제 사내 ADFS 연동을 시도하는 과정에서 두 가지가 더 드러났다.
+
+**배너 진단 정보 부족**: `SSO_SILENT_LOGIN_ENABLED=false`로 Menlo Security
+간섭은 해결됐지만, 로그인 버튼을 눌러도 여전히 `broker_unreachable` 배너만
+뜨고 원인을 알 수 없었다 — 매번 서버 로그 파일을 열어 복사해 와야 했다.
+`/sso/login`·`/sso/callback`의 `except Exception` 두 곳 모두, 리다이렉트
+URL에 `sso_error_detail` 파라미터를 추가해 `f"{type(exc).__name__}: {exc}"`
+(300자로 자름, URL 인코딩)를 같이 실어 보내도록 수정 — 프론트
+(`useAdminAuth.ts`의 `ssoErrorDetail`, `App.vue`의 `.sso-error-detail`)가
+게이트 화면 배너에 바로 표시한다. 이 정보는 토큰/자격증명이 아니라 순수
+네트워크/TLS 진단 메시지라 노출해도 안전하다고 판단했다.
+
+이 배너 덕분에 실제 원인이 `SSL: CERTIFICATE_VERIFY_FAILED`인 것을 바로
+확인했다 — ADFS가 회사 내부 CA가 발급한 인증서를 쓰는데, Python(`httpx`/
+`certifi`)이 그 CA를 몰라 생기는 문제(Windows/curl은 시스템 인증서 저장소를
+써서 통과하지만 Python은 별도 번들).
+
+**내부 CA 인증서 신뢰(`SSO_CA_BUNDLE_PATH`)**: 매번 `$env:SSL_CERT_FILE`을
+수동으로 설정하는 임시방편 대신, 프로젝트의 기존 `.env`-파일 컨벤션에 맞춰
+해결했다. `backend/app/auth/oidc.py`의 `oauth.register(..., client_kwargs=...)`를
+조사해보니, `client_kwargs`가 discovery(`load_server_metadata`)·토큰
+교환·userinfo 조회에 쓰이는 httpx 클라이언트 생성자에 그대로 전달되고
+(`authlib/integrations/base_client/async_app.py`), `verify`는
+`authlib/integrations/httpx_client/utils.py`의 `HTTPX_CLIENT_KWARGS`에 포함된
+공식 지원 키라는 걸 확인 — `client_kwargs`에 `verify=<CA 번들 경로>`를
+추가하는 것이 SSO 관련 네트워크 호출 3곳 전부에 한 번에 적용되는 가장
+정확한 주입 지점이었다.
+
+- `backend/app/config.py`: `DATA_DIR`과 동일한 패턴으로
+  `SSO_CA_BUNDLE_PATH = (BACKEND_DIR / _ca_bundle_path) if _ca_bundle_path else None`
+  — 상대경로/절대경로 모두 pathlib이 올바르게 처리(절대경로는 `BACKEND_DIR`을
+  무시하고 그대로 반환).
+- `backend/app/auth/oidc.py`: `SSO_CA_BUNDLE_PATH`가 설정돼 있고 실제로
+  파일이 존재하면 `client_kwargs["verify"]`에 그 경로를 넣는다. 설정은
+  됐는데 파일이 없으면 조용히 넘어가지 않고 경고 로그를 남긴다.
+- **로컬 개발 vs PDEP 배포, 코드는 동일**: 로컬은 `backend/certs/`(gitignore
+  대상, `backend/certs/README.md`만 커밋)에 인증서 파일을 직접 두고 상대경로로
+  가리킨다. PDEP 등 실 배포에서는 인증서를 Docker 이미지에 구워 넣지 않고(레지스트리
+  노출 안티패턴), 인증서 내용을 K8s **Secret**으로 만들어 백엔드 Pod에
+  **Volume으로 마운트**한 뒤 그 절대경로를 `SSO_CA_BUNDLE_PATH`로 준다(Secret은
+  인증서 내용에만, 경로 문자열 자체는 ConfigMap). 코드는 "그 경로에 파일이
+  있으면 읽는다"만 알면 되므로 환경별 분기가 전혀 없다 — 자세한 내용은
+  `docs/ENV_AND_SECRETS.md`의 `SSO_CA_BUNDLE_PATH` 설명 참고.
+- `SSO_CA_BUNDLE_PATH`의 경로 조합/존재 확인 로직에 대한 전용 단위 테스트는
+  만들지 않았다 — `oidc.py`가 모듈 레벨에서 `oauth.register()`를 실행하고
+  `app.api.auth`가 그 `oauth` 싱글턴을 import-binding하는 구조라,
+  `importlib.reload` 기반 테스트는 바로 위 "`SSO_BROKER_CONFIGURED` 계산
+  자체" 항목에서 이미 겪은 것과 같은 cross-module 바인딩 문제를 일으킨다.
+  실제 동작 확인은 인증서 파일을 넣고 ADFS 연동을 직접 재시도하는 수동
+  검증으로 한다.
+
 ### PDEP 실연동 (예정, 착수 전 확인/검토할 것)
 
 - 사내 SSO 연동이 실제로 필수/권장인지, 프로토콜이 정말 OIDC인지(SAML 등 다른
   프로토콜이면 `backend/app/auth/oidc.py`만 교체하면 되도록 이미 그 파일 하나에
   OIDC 관련 로직을 모아뒀다), 클레임 스펙(사번/이메일 등 어떤 필드를
   `allowed_users`/`SSO_ADMIN_ALLOWLIST` 대조에 쓸 수 있는지 — `SSO_USER_ID_CLAIM`으로 설정).
+- 내부 CA 인증서 Secret 마운트 필요 여부 확인 — ADFS 등 사내 SSO 브로커가
+  내부 CA 인증서를 쓰면 `SSO_CA_BUNDLE_PATH`를 K8s Secret(Volume mount)으로
+  연결해야 한다(위 "내부 CA 인증서 신뢰" 절, `docs/ENV_AND_SECRETS.md` 참고).
+  Secret 이름/마운트 경로의 정확한 명명 규칙은 `<CONFIRM_WITH_PDEP_ADMIN>`.
 - 백엔드 컨테이너화/K8s 매니페스트는 아직 없다(프론트 Dockerfile만 존재) — 실제
   PDEP 배포 착수 시 별도로 준비해야 한다.
 - 향후 "여러 사용자가 각자 로그인 + 개인별 권한"으로 범위를 넓히고 싶어지면, 그때

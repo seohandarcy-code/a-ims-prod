@@ -25,6 +25,9 @@ const accessDenied = ref(false)
 // 등, app/api/auth.py의 broker_unreachable) — 단순히 IdP 세션이 없는 정상
 // 상황(sso_required)과 구분해 게이트 화면에 에러 배너로 보여준다.
 const ssoError = ref<string | null>(null)
+// 브로커 통신 실패의 실제 원인(예외 타입/메시지) — 매번 서버 로그를 확인하지
+// 않아도 게이트 화면 배너에서 바로 진단할 수 있도록 ssoError와 함께 표시한다.
+const ssoErrorDetail = ref<string | null>(null)
 const modalOpen = ref(false)
 const authLoading = ref(false)
 const authError = ref<string | null>(null)
@@ -55,6 +58,9 @@ function consumeSsoCallbackToken(): void {
   // 별개로 먼저 읽어둔다.
   if (params.has('sso_error')) {
     ssoError.value = params.get('sso_error')
+  }
+  if (params.has('sso_error_detail')) {
+    ssoErrorDetail.value = params.get('sso_error_detail')
   }
 
   if (params.has('sso_required')) {
@@ -147,6 +153,7 @@ export function useAdminAuth() {
     ssoRequired,
     accessDenied,
     ssoError,
+    ssoErrorDetail,
     modalOpen,
     authLoading,
     authError,

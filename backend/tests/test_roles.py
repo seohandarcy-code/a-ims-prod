@@ -280,7 +280,10 @@ def test_sso_login_silent_network_failure_redirects_with_error_reason(monkeypatc
         r = client.get("/api/v1/auth/sso/login?silent=1", follow_redirects=False)
 
     assert r.status_code == 307
-    assert r.headers["location"] == "/#sso_required=1&sso_error=broker_unreachable"
+    assert (
+        r.headers["location"]
+        == "/#sso_required=1&sso_error=broker_unreachable&sso_error_detail=RuntimeError%3A+discovery+unreachable"
+    )
 
 
 def test_sso_login_non_silent_network_failure_redirects_with_error_reason(monkeypatch: pytest.MonkeyPatch):
@@ -299,7 +302,10 @@ def test_sso_login_non_silent_network_failure_redirects_with_error_reason(monkey
         r = client.get("/api/v1/auth/sso/login", follow_redirects=False)
 
     assert r.status_code == 307
-    assert r.headers["location"] == "/#sso_error=broker_unreachable"
+    assert (
+        r.headers["location"]
+        == "/#sso_error=broker_unreachable&sso_error_detail=RuntimeError%3A+discovery+unreachable"
+    )
 
 
 def test_sso_callback_non_oauth_failure_redirects_with_error_reason_when_silent(monkeypatch: pytest.MonkeyPatch):
@@ -321,7 +327,10 @@ def test_sso_callback_non_oauth_failure_redirects_with_error_reason_when_silent(
         callback_res = client.get("/api/v1/auth/sso/callback", follow_redirects=False)
 
     assert callback_res.status_code == 307
-    assert callback_res.headers["location"] == "/#sso_required=1&sso_error=broker_unreachable"
+    assert (
+        callback_res.headers["location"]
+        == "/#sso_required=1&sso_error=broker_unreachable&sso_error_detail=RuntimeError%3A+token+endpoint+unreachable"
+    )
 
 
 def test_sso_callback_non_oauth_failure_redirects_with_error_reason_when_not_silent(
@@ -342,7 +351,10 @@ def test_sso_callback_non_oauth_failure_redirects_with_error_reason_when_not_sil
         callback_res = client.get("/api/v1/auth/sso/callback", follow_redirects=False)
 
     assert callback_res.status_code == 307
-    assert callback_res.headers["location"] == "/#sso_error=broker_unreachable"
+    assert (
+        callback_res.headers["location"]
+        == "/#sso_error=broker_unreachable&sso_error_detail=RuntimeError%3A+token+endpoint+unreachable"
+    )
 
 
 def test_local_login_blocked_in_sso_mode_by_default(monkeypatch: pytest.MonkeyPatch):

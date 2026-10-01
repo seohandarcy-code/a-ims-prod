@@ -82,6 +82,16 @@ SSO_CLIENT_ID = os.getenv("SSO_CLIENT_ID", "").strip()
 SSO_CLIENT_SECRET = os.getenv("SSO_CLIENT_SECRET", "").strip()
 SSO_REDIRECT_URI = os.getenv("SSO_REDIRECT_URI", "").strip()
 
+# 사내 CA가 발급한 인증서를 쓰는 SSO 브로커(ADFS 등)에 연결할 때, Python이
+# certifi 기본 번들만 신뢰해 SSL: CERTIFICATE_VERIFY_FAILED로 실패하는 문제를
+# 해결하기 위한 내부 CA 번들 경로. DATA_DIR과 동일한 패턴으로 BACKEND_DIR
+# 기준 상대경로/절대경로 모두 지원한다(pathlib이 절대경로는 그대로 반환).
+# 로컬 개발은 backend/certs/ 아래에 파일을 직접 두고, PDEP 등 실 배포에서는
+# K8s Secret을 Volume으로 마운트한 경로를 가리키면 된다(docs/ENV_AND_SECRETS.md
+# 참고) — 코드는 어느 쪽이든 동일하게 동작한다. 비워두면 None(기존 동작 그대로).
+_ca_bundle_path = os.getenv("SSO_CA_BUNDLE_PATH", "").strip()
+SSO_CA_BUNDLE_PATH = (BACKEND_DIR / _ca_bundle_path) if _ca_bundle_path else None
+
 # 브레이크글래스 admin 목록(콤마 구분, 아래 SSO_USER_ID_CLAIM 클레임 값과 대조).
 # 실제 로그인 허용 여부는 이제 DB의 allowed_users 테이블(app/auth/access_store.py,
 # 관리자 화면 "접근 권한 관리" 탭)이 결정한다 — 이 목록은 그 테이블을 관리자가 잘못

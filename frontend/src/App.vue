@@ -80,6 +80,10 @@
         class="sso-error-banner"
       >
         {{ ssoErrorMessage }}
+        <span
+          v-if="ssoErrorDetail"
+          class="sso-error-detail"
+        >{{ ssoErrorDetail }}</span>
       </p>
       <button
         type="button"
@@ -159,6 +163,7 @@ const {
   ssoRequired,
   accessDenied,
   ssoError,
+  ssoErrorDetail,
   authLoading,
   authError,
   login,
@@ -415,6 +420,14 @@ onMounted(async () => {
   font-size: 0.85rem;
   line-height: 1.4;
   text-align: left;
+}
+
+.sso-error-detail {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--text-subtle);
+  font-size: 0.75rem;
+  word-break: break-all;
 }
 
 .login-gate-btn {
