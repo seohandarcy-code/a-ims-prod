@@ -16,13 +16,21 @@ if ($BackendPort -eq 0) { $BackendPort = $defaultPorts.BackendPort }
 if ($VitePort -eq 0) { $VitePort = $defaultPorts.VitePort }
 if ($NginxPort -eq 0) { $NginxPort = $defaultPorts.NginxPort }
 
-Write-Host "Starting backend (uvicorn) on http://127.0.0.1:$BackendPort ..."
-Start-Process -FilePath "$root\backend\.venv\Scripts\python.exe" `
-    -ArgumentList "-m", "uvicorn", "app.main:app", "--app-dir", "backend", "--host", "127.0.0.1", "--port", "$BackendPort" `
+# 창을 숨겨서(-WindowStyle Hidden) 띄우므로, 평소처럼 웹페이지를 쓰면서 로그를
+# 따로 보려면 파일로 남겨야 한다 — stdout/stderr를 합쳐서 하나의 로그 파일에
+# 쓴다(uvicorn/Python logging 둘 다 보통 stderr로 나가므로 2>&1로 합침).
+# 실시간으로 보려면 별도 창에서: Get-Content backend\uvicorn.log -Wait -Tail 20
+Write-Host "Starting backend (uvicorn) on http://127.0.0.1:$BackendPort ... (log: backend\uvicorn.log)"
+# PYTHONIOENCODING: 리다이렉트된 stdout/stderr는 콘솔이 아니라서 Python이
+# Windows 로캘 코드페이지(cp949 등)로 쓸 수 있다 — 한글 로그가 깨지는 걸
+# 막기 위해 UTF-8로 고정한다.
+$env:PYTHONIOENCODING = "utf-8"
+Start-Process -FilePath "cmd.exe" `
+    -ArgumentList "/c", "$root\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port $BackendPort > $root\backend\uvicorn.log 2>&1" `
     -WorkingDirectory $root -WindowStyle Hidden
 
-Write-Host "Starting frontend (vite dev) on http://127.0.0.1:$VitePort ..."
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "cd frontend && npm run dev -- --port $VitePort --strictPort" `
+Write-Host "Starting frontend (vite dev) on http://127.0.0.1:$VitePort ... (log: frontend\vite.log)"
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "cd frontend && npm run dev -- --port $VitePort --strictPort > vite.log 2>&1" `
     -WorkingDirectory $root -WindowStyle Hidden
 
 Start-Sleep -Seconds 2
