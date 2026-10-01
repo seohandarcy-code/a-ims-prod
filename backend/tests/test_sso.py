@@ -6,7 +6,9 @@
 """
 from __future__ import annotations
 
-from app.auth.oidc import is_allowed_by_claims
+from pathlib import Path
+
+from app.auth.oidc import _looks_like_pem, is_allowed_by_claims
 
 
 def test_empty_allowlist_allows_any_authenticated_claims():
@@ -32,3 +34,20 @@ def test_allowlist_rejects_missing_claim():
 def test_allowlist_checks_configured_claim_name_not_just_email():
     claims = {"preferred_username": "ims.admin", "email": "someone-else@example.com"}
     assert is_allowed_by_claims(claims, ["ims.admin"], "preferred_username") is True
+
+
+def test_looks_like_pem_true_for_pem_content(tmp_path: Path):
+    p = tmp_path / "ca.pem"
+    p.write_text("-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----\n")
+    assert _looks_like_pem(p) is True
+
+
+def test_looks_like_pem_false_for_binary_der(tmp_path: Path):
+    p = tmp_path / "ca.crt"
+    p.write_bytes(bytes([0x30, 0x82, 0x01, 0x0A, 0x02, 0x82, 0x01, 0x01]))
+    assert _looks_like_pem(p) is False
+
+
+def test_looks_like_pem_true_when_file_unreadable(tmp_path: Path):
+    missing = tmp_path / "does-not-exist.pem"
+    assert _looks_like_pem(missing) is True

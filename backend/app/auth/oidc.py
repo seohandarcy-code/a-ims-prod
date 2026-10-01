@@ -20,6 +20,7 @@ validate_aud). 로컬 Keycloak처럼 진짜 멀티테넌트 realm은 client_id �
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from authlib.integrations.starlette_client import OAuth
 
@@ -30,6 +31,22 @@ logger = logging.getLogger(__name__)
 # issuer URL만 있으면 브로커 연동을 시도한다 — client_id/secret은 위 설명대로
 # 이 issuer가 이미 서비스별로 유일하게 발급된 경우 없어도 된다.
 SSO_BROKER_CONFIGURED = bool(SSO_ISSUER_URL)
+
+
+def _looks_like_pem(path: Path) -> bool:
+    """CA 번들 파일이 PEM(텍스트) 형식으로 보이는지 가볍게 확인한다.
+
+    확실한 검증은 아니다 — 실제 유효성은 TLS 핸드셰이크 시점에 ssl 모듈이
+    최종 판정한다(Python ssl은 CA 번들로 PEM만 받고 DER 바이너리는 거부함).
+    회사에서 받은 인증서가 .crt/.cer 확장자라 DER일 수 있는, 흔히 겪는 실수를
+    기동 시점에 조금 더 빨리 알아차리기 위한 보조 장치일 뿐이다.
+    """
+    try:
+        content = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return True  # 못 읽으면 판단 보류 — 실제 verify 시도에서 드러나게 둔다
+    return "BEGIN CERTIFICATE" in content
+
 
 oauth = OAuth()
 
@@ -43,6 +60,15 @@ if SSO_BROKER_CONFIGURED:
         # 있는 가장 정확한 주입 지점이다(app/config.py 참고).
         if SSO_CA_BUNDLE_PATH.exists():
             client_kwargs["verify"] = str(SSO_CA_BUNDLE_PATH)
+            if not _looks_like_pem(SSO_CA_BUNDLE_PATH):
+                logger.warning(
+                    "SSO_CA_BUNDLE_PATH(%s)가 PEM 형식이 아닌 것 같습니다"
+                    "(파일 안에 '-----BEGIN CERTIFICATE-----'가 없음) — DER/바이너리"
+                    " 인증서라면 `openssl x509 -inform der -in <원본> -out <파일>.pem`"
+                    "으로 변환하세요. 이대로 두면 실제 SSO 로그인 시도 시 SSL 에러로"
+                    " 실패할 수 있습니다.",
+                    SSO_CA_BUNDLE_PATH,
+                )
         else:
             logger.warning(
                 "SSO_CA_BUNDLE_PATH가 설정됐지만 파일을 찾을 수 없습니다: %s", SSO_CA_BUNDLE_PATH
