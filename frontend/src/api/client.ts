@@ -132,6 +132,7 @@ export interface AuthModeInfo {
   auth_mode: 'local' | 'sso'
   sso_allow_local_login: boolean
   sso_broker_configured: boolean
+  sso_silent_login_enabled: boolean
 }
 
 export function fetchAuthMode(): Promise<AuthModeInfo> {

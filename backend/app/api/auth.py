@@ -39,6 +39,7 @@ from app.config import (
     SSO_ALLOW_LOCAL_LOGIN,
     SSO_GUEST_MODE_ON_LOGIN_FAILURE,
     SSO_REDIRECT_URI,
+    SSO_SILENT_LOGIN_ENABLED,
     SSO_USER_ID_CLAIM,
 )
 from app.schemas.auth import (
@@ -85,6 +86,7 @@ def get_auth_mode() -> AuthModeResponse:
         auth_mode=AUTH_MODE,
         sso_allow_local_login=SSO_ALLOW_LOCAL_LOGIN,
         sso_broker_configured=SSO_BROKER_CONFIGURED,
+        sso_silent_login_enabled=SSO_SILENT_LOGIN_ENABLED,
     )
 
 

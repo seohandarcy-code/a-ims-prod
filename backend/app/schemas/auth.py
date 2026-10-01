@@ -29,3 +29,4 @@ class AuthModeResponse(BaseModel):
     auth_mode: str
     sso_allow_local_login: bool = False
     sso_broker_configured: bool = False
+    sso_silent_login_enabled: bool = True

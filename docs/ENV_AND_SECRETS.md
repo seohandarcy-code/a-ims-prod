@@ -37,6 +37,7 @@
 | `SSO_USER_ID_CLAIM` | `allowed_users.sso_id` 및 브레이크글래스 목록과 대조할 OIDC 클레임 이름 | `email` | 아니오 | ConfigMap | 표준 OIDC 클레임 아님 — IdP마다 다르므로 IT팀 확인 필요(사번/UPN 등 권장) |
 | `SSO_ALLOW_LOCAL_LOGIN` | `AUTH_MODE=sso`에서도 기존 로컬 비밀번호 로그인(`/login`)을 같이 열어둘지 | `false` | 아니오 | ConfigMap | 브로커 `client_id` 발급 전 부트스트랩용. **공유 서버에서 켤 거면 `ADMIN_BOOTSTRAP_PASSWORD`를 기본값에서 반드시 변경할 것** — 아래 "SSO 로그인" 절 참고 |
 | `SSO_GUEST_MODE_ON_LOGIN_FAILURE` | 실제 로그인 시도가 IdP 거부/미등록으로 실패해도 차단 대신 조회 전용 게스트 세션을 내줄지 | `false` | 아니오 | ConfigMap | **SSO 안정화 기간 임시 조치** — silent(자동 재인증) 실패는 절대 포함 안 함, IdP 거부와 미등록 계정 둘 다 포함(접근 제어가 그만큼 약해짐을 감수하는 것). SSO가 안정적으로 검증되면 반드시 다시 끌 것 — 아래 "SSO 로그인" 절 참고 |
+| `SSO_SILENT_LOGIN_ENABLED` | 페이지 로드 시 자동으로 조용한 재인증(`prompt=none`)을 시도할지 | `true` | 아니오 | ConfigMap | 사내 웹 격리 솔루션(Menlo Security 등)이 이 자동 리다이렉트 자체를 가로채는 환경에서 `false`로 끈다 — 그러면 항상 로그인 게이트부터 뜨고, 사용자가 "회사 계정으로 로그인" 버튼을 직접 눌러야만 OIDC 흐름이 시작된다(모든 로그인 시도가 `/sso/login`을 거치므로 state가 정상적으로 세션에 저장된 채 출발함) — 아래 "SSO 로그인" 절 참고 |
 
 ### 데이터 계층 접속 정보 (`DATABASE_URL` / `DB_*`)
 
@@ -126,6 +127,16 @@
   미등록 계정 거부까지 포함하는 건 "`allowed_users`로 막으려던 사람이 오히려
   게스트로 들어오는" 역설을 감수하는 것 — SSO 로그인이 사내 환경에서 안정적으로
   검증되면 반드시 다시 꺼야 한다.
+- `SSO_SILENT_LOGIN_ENABLED=false`면, 페이지 로드 시 자동으로 걸던 조용한
+  재인증(`prompt=none`, 사내 SSO 세션이 있으면 버튼 없이 바로 연계되는 기능)을
+  아예 시도하지 않는다 — 항상 로그인 게이트부터 뜨고, 사용자가 "회사 계정으로
+  로그인" 버튼을 직접 눌러야만 OIDC 흐름이 시작된다. 사내 웹 격리 솔루션(Menlo
+  Security 등)이 이 자동 리다이렉트 자체를 IdP 도메인으로의 의심스러운 이동으로
+  보고 가로채는 환경에서 실제로 필요했던 설정 — 버튼을 통해서만 시작하면 모든
+  로그인 시도가 `/sso/login`을 거쳐 OAuth state가 정상적으로 세션에 저장된 채
+  출발하므로, 브라우저 주소창에 IdP URL을 직접 입력해 들어갔을 때처럼 콜백에서
+  state 불일치로 거부되는 일도 없다. 기본값 `true`(기존 동작 그대로)라 이
+  문제를 겪지 않는 환경에는 영향이 없다.
 - 로컬 테스트 IdP(Keycloak) 설치 절차는 `README.md`의 "SSO로 전환해서 로그인
   검증하기" 절 참고. **실제 회사 SSO 브로커에 처음 연결하는 절차**는 `README.md`의
   "다른 서버로 옮겨서 실제 SSO 브로커에 연동하기" 절 참고 — 브로커마다 클레임

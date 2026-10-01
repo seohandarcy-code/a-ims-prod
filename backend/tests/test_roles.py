@@ -389,6 +389,28 @@ def test_auth_mode_endpoint_reports_local_login_flag(monkeypatch: pytest.MonkeyP
         "auth_mode": "sso",
         "sso_allow_local_login": True,
         "sso_broker_configured": False,
+        "sso_silent_login_enabled": True,
+    }
+
+
+def test_auth_mode_reports_silent_login_disabled_when_flag_off(monkeypatch: pytest.MonkeyPatch):
+    """Menlo Security 같은 웹 격리 솔루션이 자동 조용한 재인증 리다이렉트를
+    가로채는 환경에서는 SSO_SILENT_LOGIN_ENABLED=false로 꺼서, 프론트가 첫
+    로드부터 자동 시도 없이 게이트를 보여주게 한다."""
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_ALLOW_LOCAL_LOGIN", False)
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_SILENT_LOGIN_ENABLED", False)
+
+    with TestClient(app) as client:
+        r = client.get("/api/v1/auth/mode")
+
+    assert r.status_code == 200
+    assert r.json() == {
+        "auth_mode": "sso",
+        "sso_allow_local_login": False,
+        "sso_broker_configured": True,
+        "sso_silent_login_enabled": False,
     }
 
 

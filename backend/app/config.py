@@ -117,6 +117,15 @@ SSO_ALLOW_LOCAL_LOGIN = os.getenv("SSO_ALLOW_LOCAL_LOGIN", "").strip().lower() =
 # 검증되면 반드시 다시 끌 것. 기본값 false.
 SSO_GUEST_MODE_ON_LOGIN_FAILURE = os.getenv("SSO_GUEST_MODE_ON_LOGIN_FAILURE", "").strip().lower() == "true"
 
+# 페이지 로드 시 자동으로 조용한 재인증(prompt=none)을 시도할지. 기본값 true
+# (기존 동작 그대로 — 사내 SSO 세션이 있으면 버튼 없이 바로 연계됨). 사내 웹
+# 격리 솔루션(Menlo Security 등)이 이 자동 리다이렉트 자체를 가로채는
+# 환경에서는 false로 꺼서, 사용자가 "회사 계정으로 로그인" 버튼을 직접
+# 눌러야만 OIDC 흐름이 시작되게 한다 — 이러면 모든 로그인 시도가 /sso/login을
+# 거쳐 state가 정상적으로 세션에 저장된 채 시작되고, 주소창에 IdP URL을 직접
+# 입력해 들어가는 것과 달리 콜백에서 state 불일치로 거부되는 일도 없다.
+SSO_SILENT_LOGIN_ENABLED = os.getenv("SSO_SILENT_LOGIN_ENABLED", "true").strip().lower() != "false"
+
 # OAuth state/nonce를 담는 Starlette SessionMiddleware 서명 키. 이 세션은 로그인
 # 리다이렉트가 왕복하는 짧은 시간에만 쓰이므로(로그인 자체의 세션이 아님 —
 # 그건 AdminAuthStore가 별도 관리), 로컬 dev에서는 비워두면 프로세스 기동마다

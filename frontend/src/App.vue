@@ -191,6 +191,11 @@ const ssoAllowLocalLogin = ref(false)
 // SSO_BROKER_CONFIGURED) oauth.sso 자체가 없어 /sso/login이 죽는다 — 이 값이
 // false면 조용한 재인증 시도 자체를 걸지 않는다(아래 onMounted).
 const ssoBrokerConfigured = ref(false)
+// 페이지 로드 시 자동 조용한 재인증을 시도할지(app/config.py의
+// SSO_SILENT_LOGIN_ENABLED). Menlo Security 같은 사내 웹 격리 솔루션이 이
+// 자동 리다이렉트 자체를 가로채는 환경에서 false로 꺼둘 수 있다 — 꺼져
+// 있으면 버튼을 직접 눌러야만 OIDC 흐름이 시작된다(아래 onMounted).
+const ssoSilentLoginEnabled = ref(true)
 const fallbackUsername = ref('admin')
 const fallbackPassword = ref('')
 
@@ -203,7 +208,7 @@ const showLoginGate = computed(
   () =>
     authMode.value === 'sso' &&
     !isAuthed.value &&
-    (ssoRequired.value || !ssoBrokerConfigured.value || !!ssoError.value) &&
+    (ssoRequired.value || !ssoBrokerConfigured.value || !!ssoError.value || !ssoSilentLoginEnabled.value) &&
     !accessDenied.value,
 )
 
@@ -242,6 +247,7 @@ onMounted(async () => {
   authMode.value = modeRes.auth_mode
   ssoAllowLocalLogin.value = modeRes.sso_allow_local_login
   ssoBrokerConfigured.value = modeRes.sso_broker_configured
+  ssoSilentLoginEnabled.value = modeRes.sso_silent_login_enabled
 
   if (authMode.value !== 'sso') {
     await loadMeta()
@@ -266,6 +272,14 @@ onMounted(async () => {
     // 브로커 client_id 등이 아직 없으면 조용한 시도 자체가 무조건 실패(서버
     // 에러)하므로 아예 시도하지 않고 바로 게이트를 보여준다 — SSO_ALLOW_LOCAL_LOGIN이
     // 켜져 있으면 여기서 로컬 로그인 폼을 바로 볼 수 있다.
+    return
+  }
+
+  if (!ssoSilentLoginEnabled.value) {
+    // Menlo Security 같은 웹 격리 솔루션이 이 자동 리다이렉트 자체를
+    // 가로채는 환경 대응(app/config.py의 SSO_SILENT_LOGIN_ENABLED) — 꺼져
+    // 있으면 아예 시도하지 않고 게이트를 보여준다. 모든 실제 로그인은 버튼을
+    // 통해서만 시작되므로 state가 항상 정상적으로 세션에 저장된 채 출발한다.
     return
   }
 
