@@ -393,6 +393,65 @@ URL에 `sso_error_detail` 파라미터를 추가해 `f"{type(exc).__name__}: {ex
   실제 동작 확인은 인증서 파일을 넣고 ADFS 연동을 직접 재시도하는 수동
   검증으로 한다.
 
+### 실제 사내 브로커는 discovery 없는 Implicit + form_post 흐름이었다 (완료, 2026-10-02)
+
+SSL 인증서 문제(`SSO_CA_BUNDLE_PATH`)를 해결한 뒤에도 `.well-known/openid-configuration`이
+어떤 경로 조합으로도 404가 났다. 브로커 담당 팀이 제공한 파이썬 레퍼런스
+예시 코드(`docs/ref_router.py`에 원문 그대로 보존)를 분석한 결과, **이 브로커는
+지금까지 설계했던 방식(authlib, discovery 기반 Authorization Code Flow)과
+근본적으로 다른 OIDC 흐름**을 쓴다는 게 확인됐다:
+
+- discovery(`.well-known/openid-configuration`) 자체를 지원하지 않는다
+  (여러 경로 조합 전부 404 — `/oidc/jwks`, `/oidc/form-authorize`만 직접 존재).
+- 콜백이 `GET /callback?code=...`가 아니라 **`POST /callback`**이고, body에
+  `id_token`이 바로 온다(form_post 응답 모드) — 토큰 교환 엔드포인트 자체가 없다.
+- 서명 검증은 `{브로커}/oidc/jwks`를 직접 조회해서 PyJWT 스타일로 한다.
+- 인가 URL은 `{브로커}/oidc/form-authorize?client_id={서비스ID}&redirect_uri={redirect_uri}`
+  뿐 — `response_type`/`response_mode`/`nonce`/`scope` 같은 "이론상 표준"
+  파라미터를 추가로 붙이지 않는다(레퍼런스에서 실제로 검증된 유일한 조합이라
+  추측으로 보강하지 않음).
+- `SERVICE_ID`는 URL 경로가 아니라 `client_id` 쿼리 파라미터로 들어가고,
+  브로커 도메인 자체는 서비스 경로를 포함하지 않는다 — 그래서 처음에
+  `SSO_ISSUER_URL`에 `<브로커>/<서비스경로>`를 통째로 넣은 게 틀렸던 것이었다.
+
+**대응**:
+- `backend/app/config.py`에 `SSO_FLOW_MODE` 추가 — **기본값
+  `implicit_form_post`**(이 브로커/실제 ADFS 공용, 진짜 운영 대상),
+  `auth_code`는 기존 discovery 기반 방식(로컬 Keycloak 검증 전용으로 격하).
+  로컬 Keycloak은 "진짜 운영 대상"이 아니라 로컬 개발 편의용 대체 수단이라는
+  게 이번에 확정됐으므로, 그걸 기본값으로 둘 이유가 없다고 판단했다.
+- `backend/app/auth/oidc.py`에 `build_broker_authorize_url()`/
+  `verify_broker_id_token()` 추가 — 레퍼런스와 최대한 동일하게 맞추되,
+  JWKS 조회 시 레퍼런스의 `verify=False`(TLS 검증 비활성화)는 따라하지 않고
+  이미 만들어둔 `SSO_CA_BUNDLE_PATH` 기반 신뢰를 재사용했다. 키 선택도
+  레퍼런스의 `keys[0]` 대신 토큰 헤더의 `kid`로 매칭해 더 안전하게 갔다
+  (매칭 실패 시 첫 키로 폴백해 레퍼런스와 동일하게 동작).
+- `backend/app/api/auth.py`의 `/sso/callback`을 `GET`에서 `GET+POST`로
+  확장하고 `SSO_FLOW_MODE`로 분기 — **클레임을 얻은 이후의 로직
+  (`allowed_users` 대조, role 판정, 게스트 모드, 세션 발급)은 완전히
+  동일하게 공유**한다. `/sso/login`도 `implicit_form_post`면 discovery/
+  silent 재인증 없이 바로 리다이렉트하도록 분기.
+- 새 의존성: `PyJWT[crypto]`(레퍼런스와 동일한 라이브러리로 서명 검증,
+  authlib.jose로 새로 구현하는 것보다 이 특정 브로커에서 위험이 낮음),
+  `python-multipart`(FastAPI가 `request.form()`으로 form_post body를
+  파싱하려면 필수).
+- **왜 "직접 ADFS 연결"(레퍼런스의 `else` 분기)은 구현하지 않았나**: 지금
+  배포는 브로커만 경유하고 직접 ADFS에 붙을 일이 없다(YAGNI). 다만
+  `SSO_ISSUER_URL`/`SSO_CLIENT_ID`/`SSO_CLIENT_SECRET`만 바꾸면 원칙적으로
+  같은 코드로 동작할 가능성이 높다는 관찰은 남겨둔다 — 레퍼런스에서도 콜백
+  처리/서명 검증(`jwt.decode(...)`)은 두 분기가 완전히 같은 코드를 타고,
+  차이는 인가 URL 파라미터 개수와 공개키 출처(JWKS vs 로컬 인증서 파일)뿐이기
+  때문이다. 실제로 필요해지면 그때 파라미터를 보강한다.
+- 기존 테스트 13개가 암묵적으로 `auth_code`(옛 기본값) 동작을 전제하고
+  있어서, `SSO_FLOW_MODE=auth_code`를 명시적으로 monkeypatch하도록 전부
+  수정했다(기본값이 바뀌어서 생긴 회귀, `backend/tests/test_roles.py`).
+  신규 테스트는 `build_broker_authorize_url`/`verify_broker_id_token`
+  단위 테스트(PyJWT로 테스트용 RSA 키쌍을 직접 만들어 서명 검증 로직만
+  분리 테스트, kid 매칭/만료/서명불일치 케이스 포함)와 `/sso/callback`
+  POST 흐름 통합 테스트를 `backend/tests/test_sso.py`/`test_roles.py`에
+  추가했다 — 둘 다 모듈 레벨 등록 블록과 독립적인 순수 함수/분기라 기존에
+  겪은 `importlib.reload` cross-module 바인딩 함정과 무관하다.
+
 ### PDEP 실연동 (예정, 착수 전 확인/검토할 것)
 
 - 사내 SSO 연동이 실제로 필수/권장인지, 프로토콜이 정말 OIDC인지(SAML 등 다른

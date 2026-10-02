@@ -19,10 +19,15 @@ validate_aud). 로컬 Keycloak처럼 진짜 멀티테넌트 realm은 client_id �
 """
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
+from urllib.parse import urlencode
 
+import httpx
+import jwt
 from authlib.integrations.starlette_client import OAuth
+from jwt.algorithms import RSAAlgorithm
 
 from app.config import SSO_CA_BUNDLE_PATH, SSO_CLIENT_ID, SSO_CLIENT_SECRET, SSO_ISSUER_URL
 
@@ -92,3 +97,61 @@ def is_allowed_by_claims(claims: dict, allowlist: list[str], claim_name: str) ->
     if not allowlist:
         return True
     return str(claims.get(claim_name, "")) in allowlist
+
+
+# --- SSO_FLOW_MODE=implicit_form_post(기본값) 전용 — 실제 사내 브로커 연동 ---
+#
+# 이 브로커는 discovery(.well-known/openid-configuration) 자체를 지원하지
+# 않는다(여러 경로 조합으로 확인함 — 전부 404, /oidc/jwks만 직접 존재). 브로커가
+# 제공한 파이썬 레퍼런스 예시(build_sso_url/extract_claims)를 보면 Authorization
+# Code Flow가 아니라 /oidc/form-authorize로 인가 요청을 보내면 /sso/callback에
+# id_token을 그대로 POST(form_post)로 돌려주고(토큰 교환 엔드포인트 없음),
+# /oidc/jwks로 서명을 직접 검증하는 구조다. 아래 두 함수는 그 레퍼런스와 최대한
+# 동일하게 맞췄다 — 이 브로커에서 실제로 검증된 유일한 조합이라, 추측으로
+# response_type/response_mode/nonce/scope 같은 "이론상 표준" 파라미터를
+# 추가하지 않는다(나중에 브로커 없이 ADFS에 직접 붙어야 하면 그때 보강).
+#
+# 레퍼런스와 다른 점 하나 — JWKS 조회 시 verify=False(TLS 검증 비활성화)를
+# 쓰지 않는다. 이미 만들어둔 SSO_CA_BUNDLE_PATH 기반 신뢰를 그대로 재사용한다.
+
+
+def build_broker_authorize_url(redirect_uri: str) -> str:
+    """브로커 인가 URL을 조립한다 — discovery 없이 직접 만든다.
+
+    client_id/redirect_uri 외에 다른 파라미터는 붙이지 않는다(레퍼런스
+    build_sso_url의 브로커 분기와 동일 — 이 브로커가 실제로 받는 유일한 조합).
+    """
+    params = urlencode({"client_id": SSO_CLIENT_ID, "redirect_uri": redirect_uri})
+    return f"{SSO_ISSUER_URL.rstrip('/')}/oidc/form-authorize?{params}"
+
+
+def verify_broker_id_token(id_token: str) -> dict:
+    """{SSO_ISSUER_URL}/oidc/jwks로 서명을 검증하고 클레임을 반환한다.
+
+    레퍼런스(extract_claims)와 동일하게 RS256/verify_aud=False로 맞춘다 — 이
+    브로커가 실제로 발급하는 aud 값이 client_id와 다를 수 있어 보인다. nonce
+    검증은 하지 않는다 — build_broker_authorize_url이 애초에 nonce를 보내지
+    않으므로 비교할 대상이 없다(레퍼런스도 동일).
+
+    서명 검증 실패 시 jwt.ExpiredSignatureError/jwt.InvalidTokenError를 그대로
+    전파한다 — 호출부(app/api/auth.py)가 이를 "로그인 거부"로 처리한다.
+    """
+    jwks_url = f"{SSO_ISSUER_URL.rstrip('/')}/oidc/jwks"
+    verify = str(SSO_CA_BUNDLE_PATH) if SSO_CA_BUNDLE_PATH else True
+    resp = httpx.get(jwks_url, verify=verify, timeout=10.0)
+    resp.raise_for_status()
+    jwks = resp.json()
+
+    # 레퍼런스는 keys[0]을 그냥 쓰지만, kid가 있으면 매칭해서 더 안전하게 간다
+    # (여러 키가 섞여 있어도 안전하고, kid가 없는 토큰/브로커면 첫 키로 폴백한다).
+    unverified_header = jwt.get_unverified_header(id_token)
+    kid = unverified_header.get("kid")
+    key_dict = next((k for k in jwks["keys"] if k.get("kid") == kid), jwks["keys"][0])
+    public_key = RSAAlgorithm.from_jwk(json.dumps(key_dict))
+
+    return jwt.decode(
+        id_token,
+        key=public_key,
+        algorithms=["RS256"],
+        options={"verify_signature": True, "verify_exp": True, "verify_aud": False},
+    )

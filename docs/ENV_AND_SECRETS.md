@@ -26,10 +26,11 @@
 | `DB_PASSWORD` | DB 비밀번호 | (빈 값) | **예** | **Secret** | |
 | `ADMIN_BOOTSTRAP_PASSWORD` | 관리자 초기 비밀번호(재기동마다 이 값으로 리셋) | (빈 값 → 기존 `"0000"`) | **예** | **Secret** | `backend/app/auth/state.py` 참고 |
 | `AUTH_MODE` | 로그인 게이트 스위치(A — 필수) | `local` | 아니오 | ConfigMap | `local`(대시보드 공개, 관리자 편집만 아이디/비밀번호 게이트) 또는 `sso`(대시보드 전체가 로그인 게이트, user/admin 2단계 role). 아래 "SSO 로그인" 절 참고 |
-| `SSO_ISSUER_URL` | OIDC 발급자(디스커버리) URL(B — 필수) | (빈 값) | 아니오 | ConfigMap | `{값}/.well-known/openid-configuration`을 자동 조회. 이 값 하나만 있어도 브로커 연동이 활성화된다(`SSO_BROKER_CONFIGURED`) — 아래 비고 참고 |
-| `SSO_REDIRECT_URI` | IdP가 인가 코드를 돌려줄 콜백 URL(B — 필수) | (빈 값) | 아니오 | ConfigMap | IdP 클라이언트 설정의 Redirect URI와 정확히 일치해야 함 |
-| `SSO_CLIENT_ID` | OIDC 클라이언트 ID(B — 브로커에 따라 선택) | (빈 값) | 아니오 | ConfigMap | **비워도 된다.** 서비스 URL을 등록하면 그 서비스 전용 고유 issuer 주소를 개별 발급하는 브로커(그 고유 URL 자체가 클라이언트 식별자 역할)는 별도 client_id가 없다 — `SSO_ISSUER_URL`만으로 연동되도록 코드가 지원한다(`backend/app/auth/oidc.py`). 범용 멀티테넌트 IdP(예: 로컬 Keycloak)는 여전히 채워야 함 |
-| `SSO_CLIENT_SECRET` | OIDC 클라이언트 시크릿(B — 브로커에 따라 선택) | (빈 값) | **예** | **Secret** | 위와 동일한 이유로 비워도 된다 — 비어 있으면 authlib이 토큰 엔드포인트 인증 방식을 자동으로 "none"으로 처리한다 |
+| `SSO_FLOW_MODE` | SSO 연동 방식(A — 필수, `AUTH_MODE=sso`일 때만 의미 있음) | `implicit_form_post` | 아니오 | ConfigMap | **기본값이 실제 운영 대상**(사내 브로커/ADFS, discovery 없이 `/oidc/form-authorize`+`/oidc/jwks`). `auth_code`로 바꾸면 기존 discovery 기반(authlib) 방식 — 로컬 Keycloak 검증 전용, 실제 운영 대상 아님. 아래 "SSO 로그인" 절 참고 |
+| `SSO_ISSUER_URL` | SSO 발급자 기준 URL(B — 필수) | (빈 값) | 아니오 | ConfigMap | `implicit_form_post`(기본값)면 **서비스 경로 없는 브로커 도메인만**(`{값}/oidc/form-authorize`, `{값}/oidc/jwks`로 쓰임). `auth_code`면 `{값}/.well-known/openid-configuration`을 자동 조회(이 값 하나만 있어도 `SSO_BROKER_CONFIGURED`가 켜짐) — 아래 "SSO 로그인" 절 참고 |
+| `SSO_REDIRECT_URI` | IdP가 인증 결과를 돌려줄 콜백 URL(B — 필수) | (빈 값) | 아니오 | ConfigMap | IdP/브로커 등록 정보의 Redirect URI와 정확히 일치해야 함 |
+| `SSO_CLIENT_ID` | 서비스 식별자(B — 브로커에 따라 선택) | (빈 값) | 아니오 | ConfigMap | `implicit_form_post`(기본값)면 브로커가 발급한 서비스 ID(`/oidc/form-authorize?client_id=...` 쿼리 파라미터로 쓰임, 필수인 경우가 많음). `auth_code`면 **비워도 된다** — 서비스 URL 등록형 브로커는 `SSO_ISSUER_URL`만으로 연동되도록 코드가 지원(`backend/app/auth/oidc.py`), 범용 멀티테넌트 IdP(로컬 Keycloak)는 채워야 함 |
+| `SSO_CLIENT_SECRET` | OIDC 클라이언트 시크릿(B — 브로커에 따라 선택) | (빈 값) | **예** | **Secret** | `implicit_form_post`(기본값)에서는 **아예 쓰이지 않는다**(토큰 교환 단계 자체가 없음). `auth_code`에서는 비워도 되고(authlib이 토큰 엔드포인트 인증 방식을 자동으로 "none"으로 처리), 범용 멀티테넌트 IdP는 채워야 함 |
 | `SSO_ADMIN_ALLOWLIST` | 브레이크글래스 admin 계정 목록(콤마 구분)(C — 필수) | (빈 값) | **예**(계정 식별자이므로) | **Secret** | 실제 로그인 허용 여부는 DB `allowed_users`가 결정 — 이 목록은 그게 비어도 항상 admin으로 복구되는 안전망. 최초 배포 시 반드시 채울 것. 아래 "SSO 로그인" 절 참고 |
 | `SSO_USER_ID_CLAIM` | `allowed_users.sso_id` 및 브레이크글래스 목록과 대조할 OIDC 클레임 이름(C — 필수) | `email` | 아니오 | ConfigMap | 표준 OIDC 클레임 아님 — IdP마다 다르므로 IT팀 확인 필요(사번/UPN 등 권장) |
 | `SESSION_SECRET_KEY` | OAuth state/nonce 세션 쿠키 서명 키(`SessionMiddleware`)(D — 배포 환경별) | (빈 값 → 기동마다 무작위 생성) | **예** | **Secret** | `AUTH_MODE`와 무관하게 항상 로드되지만 실제로 쓰이는 건 SSO 로그인 흐름뿐. 아래 "SSO 로그인" 절 참고 |
@@ -75,15 +76,34 @@
 가능)/`user`(조회 전용) 2단계 role도 함께 정해진다(개인별 계정을 도입한 게 아니라
 역할이 2종류로 늘어난 것, `docs/db-migration-roadmap.md` 4단계 참고). 세션
 발급/검증(`backend/app/auth/state.py`)은 두 모드가 공유하므로 이 스위치 하나로만
-전환된다. IdP에 이미 로그인돼 있으면(사내 다른 페이지 등) 버튼 클릭 없이
-`prompt=none` 방식으로 자동 재인증된다 — 아래 README 절 참고.
+전환된다. `SSO_FLOW_MODE=auth_code`(로컬 Keycloak 검증용)일 때는 IdP에 이미
+로그인돼 있으면(사내 다른 페이지 등) 버튼 클릭 없이 `prompt=none` 방식으로
+자동 재인증된다 — 아래 README 절 참고.
+
+**`SSO_FLOW_MODE`(SSO 연동 방식)**: 기본값 `implicit_form_post`가 실제 운영
+대상(사내 브로커/ADFS)이다 — discovery(`.well-known/openid-configuration`)를
+지원하지 않는 브로커라서, `{SSO_ISSUER_URL}/oidc/form-authorize`로 인가 요청을
+보내면 `/sso/callback`에 `id_token`이 POST(form_post)로 바로 오고(토큰 교환
+단계 없음), `{SSO_ISSUER_URL}/oidc/jwks`로 서명을 직접 검증한다
+(`backend/app/auth/oidc.py`의 `build_broker_authorize_url()`/
+`verify_broker_id_token()`). 이 모드는 `prompt=none` 자동 재인증을 지원하지
+않는다(확인된 바 없어 시도하지 않음) — `SSO_SILENT_LOGIN_ENABLED`는 영향이
+없다. `auth_code`로 바꾸면 지금까지의 discovery 기반(authlib, authorization
+code flow) 방식으로 동작한다 — 이건 로컬 Keycloak 검증 전용이고 실제 운영
+대상이 아니다. 두 모드 모두 `SSO_ISSUER_URL`/`SSO_CLIENT_ID`/
+`SSO_REDIRECT_URI`/`SSO_CA_BUNDLE_PATH`/`SSO_ADMIN_ALLOWLIST`/
+`SSO_USER_ID_CLAIM`을 공유한다(값의 의미만 모드에 따라 달라짐, 위 표 참고) —
+클레임을 얻은 이후(`allowed_users` 대조, role 판정, 게스트 모드, 세션 발급)
+로직은 완전히 동일하게 공유된다.
 
 **빠른 설정 체크리스트**(`backend/.env.example`의 A~F 그룹과 동일한 순서,
-전체 설명은 각 그룹 참고): (A) `AUTH_MODE=sso` → (B) `SSO_ISSUER_URL`/
-`SSO_REDIRECT_URI`(필수) + `SSO_CLIENT_ID`/`SSO_CLIENT_SECRET`(브로커가
-요구하면) → (C) `SSO_ADMIN_ALLOWLIST`(본인 식별자 최소 1개, 락아웃 방지) +
-`SSO_USER_ID_CLAIM` → 나머지 (D) 세션/도메인, (E) 내부 CA 인증서,
-(F) 안정화 스위치는 배포 환경이 특수하거나 문제가 생길 때만 건드리면 된다.
+전체 설명은 각 그룹 참고): (A) `AUTH_MODE=sso`(+ `SSO_FLOW_MODE`는 기본값
+`implicit_form_post` 그대로 두면 됨, 로컬 Keycloak 검증만 `auth_code`로 전환)
+→ (B) `SSO_ISSUER_URL`/`SSO_REDIRECT_URI`(필수) + `SSO_CLIENT_ID`(브로커가
+요구하면, `SSO_CLIENT_SECRET`은 기본 모드에서 안 씀) → (C) `SSO_ADMIN_ALLOWLIST`
+(본인 식별자 최소 1개, 락아웃 방지) + `SSO_USER_ID_CLAIM` → 나머지 (D) 세션/
+도메인, (E) 내부 CA 인증서, (F) 안정화 스위치는 배포 환경이 특수하거나 문제가
+생길 때만 건드리면 된다.
 
 **왜 DB로 관리하나**: 사내 SSO는 직접 관리하지 않는 시스템이라 "IdP 인증 성공 =
 접근 허용"은 위험하다 — 회사 SSO 계정이 있는 누구나(다른 팀 포함) 자동으로 조회

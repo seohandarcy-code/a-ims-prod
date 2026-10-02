@@ -19,13 +19,20 @@ from __future__ import annotations
 import logging
 import urllib.parse
 
+import jwt
 from authlib.integrations.base_client import OAuthError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 
 from app.api.deps import require_admin
 from app.auth import access_store
-from app.auth.oidc import SSO_BROKER_CONFIGURED, is_allowed_by_claims, oauth
+from app.auth.oidc import (
+    SSO_BROKER_CONFIGURED,
+    build_broker_authorize_url,
+    is_allowed_by_claims,
+    oauth,
+    verify_broker_id_token,
+)
 from app.auth.state import (
     AccountLockedError,
     InvalidCredentialsError,
@@ -37,6 +44,7 @@ from app.config import (
     FRONTEND_BASE_URL,
     SSO_ADMIN_ALLOWLIST,
     SSO_ALLOW_LOCAL_LOGIN,
+    SSO_FLOW_MODE,
     SSO_GUEST_MODE_ON_LOGIN_FAILURE,
     SSO_REDIRECT_URI,
     SSO_SILENT_LOGIN_ENABLED,
@@ -144,6 +152,12 @@ async def sso_login(request: Request, silent: bool = Query(default=False)) -> Re
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="SSO 브로커가 아직 설정되지 않았습니다(SSO_ISSUER_URL/SSO_CLIENT_ID/SSO_CLIENT_SECRET 필요).",
         )
+    if SSO_FLOW_MODE == "implicit_form_post":
+        # 실제 사내 브로커 — discovery도 prompt=none 같은 silent 재인증 지원도
+        # 확인된 바 없어, silent 파라미터와 무관하게 그냥 바로 리다이렉트한다.
+        # URL 조립 자체는 네트워크 호출이 없어 실패할 일이 없다(app/auth/oidc.py).
+        return RedirectResponse(build_broker_authorize_url(SSO_REDIRECT_URI))
+
     request.session["sso_silent_attempt"] = silent
     kwargs = {"prompt": "none"} if silent else {}
     try:
@@ -172,7 +186,7 @@ async def sso_login(request: Request, silent: bool = Query(default=False)) -> Re
         return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}&sso_error_detail={detail}")
 
 
-@router.get("/sso/callback")
+@router.api_route("/sso/callback", methods=["GET", "POST"])
 async def sso_callback(request: Request) -> RedirectResponse:
     _require_auth_mode("sso")
     if not SSO_BROKER_CONFIGURED:
@@ -183,37 +197,69 @@ async def sso_callback(request: Request) -> RedirectResponse:
 
     was_silent = request.session.pop("sso_silent_attempt", False)
 
-    try:
-        token = await oauth.sso.authorize_access_token(request)
-    except OAuthError as exc:
-        logger.warning("SSO 콜백 실패(silent=%s): %s", was_silent, exc)
-        if was_silent:
-            # 조용한 재인증 실패(IdP 세션 없음) — 프론트는 이걸 보고 수동 로그인
-            # 게이트를 띄운다. 여기서 자동으로 다시 시도하면 무한 리다이렉트 루프가 된다.
-            return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_required=1")
-        if SSO_GUEST_MODE_ON_LOGIN_FAILURE:
-            # SSO 안정화 기간 임시 조치(app/config.py 참고) — 실제 로그인 시도가
-            # IdP에 거부돼도 차단 대신 조회 전용 게스트 세션을 내준다.
-            logger.warning("SSO 로그인 거부 — 게스트 모드로 폴백: %s", exc)
-            guest_token, guest_expires_in = get_auth_store().issue_session("guest")
-            return RedirectResponse(
-                f"{FRONTEND_BASE_URL}/#token={guest_token}&expires_in={guest_expires_in}&role=guest"
-            )
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="SSO 로그인에 실패했습니다.")
-    except Exception as exc:
-        # OAuthError가 아닌 실패(토큰/JWKS 엔드포인트 네트워크 오류 등) — IdP가
-        # 로그인을 "거부"한 게 아니라 브로커에 도달조차 못한 경우라 구분해서
-        # 프론트에 알려준다(/sso/login의 authorize_redirect 예외 처리와 같은 원칙).
-        logger.warning("SSO 콜백 중 브로커 통신 실패(silent=%s): %s: %s", was_silent, type(exc).__name__, exc)
-        reason = "broker_unreachable"
-        detail = urllib.parse.quote_plus(f"{type(exc).__name__}: {exc}"[:300])
-        if was_silent:
-            return RedirectResponse(
-                f"{FRONTEND_BASE_URL}/#sso_required=1&sso_error={reason}&sso_error_detail={detail}"
-            )
-        return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}&sso_error_detail={detail}")
+    if SSO_FLOW_MODE == "implicit_form_post":
+        # 실제 사내 브로커 — GET이 아니라 POST로 id_token을 form body에 실어
+        # 보낸다(authorization code 교환 단계 자체가 없음, app/auth/oidc.py 참고).
+        form = await request.form()
+        id_token = str(form.get("id_token", ""))
+        try:
+            claims = verify_broker_id_token(id_token)
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError) as exc:
+            # 토큰이 오긴 왔지만 검증 실패(만료/서명불일치/형식오류) — IdP가
+            # 로그인을 거부한 것과 같은 취급(auth_code 모드의 OAuthError 분기와 동일 원칙).
+            logger.warning("SSO 콜백 실패(silent=%s): %s", was_silent, exc)
+            if was_silent:
+                return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_required=1")
+            if SSO_GUEST_MODE_ON_LOGIN_FAILURE:
+                logger.warning("SSO 로그인 거부 — 게스트 모드로 폴백: %s", exc)
+                guest_token, guest_expires_in = get_auth_store().issue_session("guest")
+                return RedirectResponse(
+                    f"{FRONTEND_BASE_URL}/#token={guest_token}&expires_in={guest_expires_in}&role=guest"
+                )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="SSO 로그인에 실패했습니다.")
+        except Exception as exc:
+            # JWKS 조회 네트워크 실패 등 — 브로커 통신 자체 실패로 취급
+            # (auth_code 모드의 일반 Exception 분기와 동일 원칙).
+            logger.warning("SSO 콜백 중 브로커 통신 실패(silent=%s): %s: %s", was_silent, type(exc).__name__, exc)
+            reason = "broker_unreachable"
+            detail = urllib.parse.quote_plus(f"{type(exc).__name__}: {exc}"[:300])
+            if was_silent:
+                return RedirectResponse(
+                    f"{FRONTEND_BASE_URL}/#sso_required=1&sso_error={reason}&sso_error_detail={detail}"
+                )
+            return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}&sso_error_detail={detail}")
+    else:
+        try:
+            token = await oauth.sso.authorize_access_token(request)
+        except OAuthError as exc:
+            logger.warning("SSO 콜백 실패(silent=%s): %s", was_silent, exc)
+            if was_silent:
+                # 조용한 재인증 실패(IdP 세션 없음) — 프론트는 이걸 보고 수동 로그인
+                # 게이트를 띄운다. 여기서 자동으로 다시 시도하면 무한 리다이렉트 루프가 된다.
+                return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_required=1")
+            if SSO_GUEST_MODE_ON_LOGIN_FAILURE:
+                # SSO 안정화 기간 임시 조치(app/config.py 참고) — 실제 로그인 시도가
+                # IdP에 거부돼도 차단 대신 조회 전용 게스트 세션을 내준다.
+                logger.warning("SSO 로그인 거부 — 게스트 모드로 폴백: %s", exc)
+                guest_token, guest_expires_in = get_auth_store().issue_session("guest")
+                return RedirectResponse(
+                    f"{FRONTEND_BASE_URL}/#token={guest_token}&expires_in={guest_expires_in}&role=guest"
+                )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="SSO 로그인에 실패했습니다.")
+        except Exception as exc:
+            # OAuthError가 아닌 실패(토큰/JWKS 엔드포인트 네트워크 오류 등) — IdP가
+            # 로그인을 "거부"한 게 아니라 브로커에 도달조차 못한 경우라 구분해서
+            # 프론트에 알려준다(/sso/login의 authorize_redirect 예외 처리와 같은 원칙).
+            logger.warning("SSO 콜백 중 브로커 통신 실패(silent=%s): %s: %s", was_silent, type(exc).__name__, exc)
+            reason = "broker_unreachable"
+            detail = urllib.parse.quote_plus(f"{type(exc).__name__}: {exc}"[:300])
+            if was_silent:
+                return RedirectResponse(
+                    f"{FRONTEND_BASE_URL}/#sso_required=1&sso_error={reason}&sso_error_detail={detail}"
+                )
+            return RedirectResponse(f"{FRONTEND_BASE_URL}/#sso_error={reason}&sso_error_detail={detail}")
 
-    claims = token.get("userinfo") or {}
+        claims = token.get("userinfo") or {}
     sso_id = str(claims.get(SSO_USER_ID_CLAIM, "")).strip()
 
     if not sso_id:

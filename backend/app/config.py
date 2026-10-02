@@ -77,6 +77,17 @@ ADMIN_BOOTSTRAP_PASSWORD = os.getenv("ADMIN_BOOTSTRAP_PASSWORD", "").strip() or 
 # "SSO로 전환해서 로그인 검증하기" 절 참고.
 AUTH_MODE = os.getenv("AUTH_MODE", "local").strip().lower() or "local"
 
+# 2026-10-02: 실제 사내 브로커 연동 결과, 로컬 Keycloak 검증 때 설계한
+# discovery 기반(authlib, authorization code flow)과 실제 브로커가 쓰는 방식이
+# 근본적으로 다르다는 게 확인됐다 — 브로커는 discovery 자체를 지원하지 않고,
+# `{SSO_ISSUER_URL}/oidc/form-authorize`로 인가 요청을 보내면 `/sso/callback`에
+# id_token을 POST(form_post)로 바로 돌려준다(교환용 token 엔드포인트 없음),
+# `{SSO_ISSUER_URL}/oidc/jwks`로 서명을 검증한다. 이게 실제 운영 대상이라
+# 기본값으로 두고, 로컬 Keycloak(discovery 기반)은 `auth_code`로 명시해야만
+# 쓰는 개발 편의용 대체 수단으로 격하했다. app/auth/oidc.py의
+# build_broker_authorize_url()/verify_broker_id_token() 참고.
+SSO_FLOW_MODE = os.getenv("SSO_FLOW_MODE", "implicit_form_post").strip().lower() or "implicit_form_post"
+
 SSO_ISSUER_URL = os.getenv("SSO_ISSUER_URL", "").strip()
 SSO_CLIENT_ID = os.getenv("SSO_CLIENT_ID", "").strip()
 SSO_CLIENT_SECRET = os.getenv("SSO_CLIENT_SECRET", "").strip()

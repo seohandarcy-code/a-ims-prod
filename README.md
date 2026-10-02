@@ -251,6 +251,7 @@ Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:8180/admin/realms/ims/users
 
 ```
 AUTH_MODE=sso
+SSO_FLOW_MODE=auth_code   # 기본값(implicit_form_post)은 실제 사내 브로커용 — 로컬 Keycloak은 discovery 기반이라 이 값이 필수
 SSO_ISSUER_URL=http://127.0.0.1:8180/realms/ims
 SSO_CLIENT_ID=ims-backend
 SSO_CLIENT_SECRET=<위 client-secret 조회 결과>
@@ -371,9 +372,11 @@ cd backend
 | 변수 | 로컬 Keycloak 테스트 때 | 실제 배포에서 |
 |---|---|---|
 | `AUTH_MODE`(A) | `sso` | `sso` |
-| `SSO_ISSUER_URL`(B) | `http://127.0.0.1:8180/realms/ims` | 브로커 관리자에게 받은 실제 issuer URL |
+| `SSO_FLOW_MODE`(A) | **`auth_code`로 명시 필요**(로컬 Keycloak은 discovery 기반) | 기본값(`implicit_form_post`) 그대로 두면 됨 — 생략 가능 |
+| `SSO_ISSUER_URL`(B) | `http://127.0.0.1:8180/realms/ims`(discovery 기준 URL) | **서비스 경로 없는 브로커 도메인만**(예: `https://sso-broker.company.com`) — `{값}/oidc/form-authorize`, `{값}/oidc/jwks`로 쓰임 |
 | `SSO_REDIRECT_URI`(B) | `http://127.0.0.1:8080/api/v1/auth/sso/callback` | 실제 배포 도메인의 콜백 경로(`https://<도메인>/api/v1/auth/sso/callback`) — **브로커에 등록하는 값과 문자 그대로 일치**해야 함(http/https, 트레일링 슬래시, 포트까지) |
-| `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET`(B) | Keycloak에서 직접 발급 | 브로커 관리자가 새 client 등록 후 발급(발급 안 하는 브로커도 있음 — 위 "환경변수와 Secret" 절 참고) |
+| `SSO_CLIENT_ID`(B) | Keycloak에서 직접 발급 | 브로커가 발급한 서비스 식별자(`/oidc/form-authorize?client_id=...`로 쓰임) |
+| `SSO_CLIENT_SECRET`(B) | Keycloak에서 직접 발급 | **기본 모드(`implicit_form_post`)에서는 아예 안 씀** — 토큰 교환 단계 자체가 없음 |
 | `SSO_ADMIN_ALLOWLIST`(C) | `ims.admin@example.local` | **본인의 실제 식별자**(아래 D, E 참고 — 브로커가 뭘 보내는지 확인 전엔 추측값으로 시작) |
 | `SSO_USER_ID_CLAIM`(C) | `email`(Keycloak 기본) | 브로커가 실제로 쓰는 클레임 이름(모르면 일단 `email`로 시작 후 E번 절차로 교정) |
 | `DATABASE_URL`(D) | 로컬 PostgreSQL | 새 서버의 실제 DB 접속 정보 |
@@ -390,14 +393,24 @@ cd backend
 
 ### D. 브로커 관리자에게 미리 요청해둘 것
 
+**`SSO_FLOW_MODE=implicit_form_post`(기본값, 실제 사내 브로커)인 경우**:
+- 서비스 등록 + 서비스 식별자(`client_id`로 쓰임) 발급 — client_secret은
+  필요 없다(토큰 교환 단계 자체가 없는 구조, 아래 "SSO 로그인" 절 참고)
+- Redirect URI 사전 등록(위 `SSO_REDIRECT_URI`와 정확히 일치)
+- `/sso/callback`이 어떤 클레임 이름으로 사용자 식별자를 보내는지(사번/이메일
+  등 — `SSO_USER_ID_CLAIM`에 쓸 값)
+- 사내망 방화벽에서 새 서버가 브로커의 `/oidc/form-authorize`,
+  `/oidc/jwks`(또는 실제로 쓰이는 경로)에 도달 가능한지
+
+**`SSO_FLOW_MODE=auth_code`(로컬 Keycloak류 범용 OIDC IdP)인 경우**:
 - Confidential 클라이언트 등록 + `client_id`/`client_secret` 발급
 - Redirect URI 사전 등록(위 `SSO_REDIRECT_URI`와 정확히 일치)
 - `openid email profile` scope 허용 여부(`backend/app/auth/oidc.py`가 요청하는
-  기본 scope — 브로커가 다른 scope 이름/추가 동의를 요구하면 이 파일을 그때
+  기본 scope — IdP가 다른 scope 이름/추가 동의를 요구하면 이 파일을 그때
   맞게 고치면 된다)
 - 어떤 클레임에 사번/이메일 등 고유 식별자가 담기는지
 - 사내망 방화벽에서 새 서버가 `{ISSUER}/.well-known/openid-configuration`에
-  도달 가능한지(사내 전용 브로커라면 특정 대역에서만 열려 있을 수 있음)
+  도달 가능한지(사내 전용 IdP라면 특정 대역에서만 열려 있을 수 있음)
 - Broker가 사용자 브라우저에는 HTTPS를 내주고 우리 서버로는 HTTP로 중계하는
   TLS Termination 구조인지, 아니면 Broker-서버 구간도 HTTPS인 Re-encryption
   구조인지(`docs/AD_SSO_Broker_HTTPS_개발환경_가이드.md` 25번 섹션 질문) —
@@ -408,11 +421,18 @@ cd backend
 
 ### E. 최초 연동 런북 (실패를 전제로 한 순서)
 
-1. `SSO_ISSUER_URL`부터 채우고 discovery가 실제로 열리는지 먼저 확인한다 —
-   이게 안 되면 나머지는 다 소용없다(네트워크/URL부터 의심):
-   ```powershell
-   curl "<SSO_ISSUER_URL>/.well-known/openid-configuration"
-   ```
+1. `SSO_ISSUER_URL`부터 채우고 브로커에 실제로 도달하는지 먼저 확인한다 —
+   이게 안 되면 나머지는 다 소용없다(네트워크/URL부터 의심).
+   - `SSO_FLOW_MODE=implicit_form_post`(기본값)면 discovery가 없으므로
+     JWKS 엔드포인트로 확인한다:
+     ```powershell
+     curl "<SSO_ISSUER_URL>/oidc/jwks"
+     ```
+     (경로가 다른 브로커면 브로커 문서/예시 코드에서 실제 경로 확인 — `D`번 참고)
+   - `SSO_FLOW_MODE=auth_code`(로컬 Keycloak류)면 discovery로 확인한다:
+     ```powershell
+     curl "<SSO_ISSUER_URL>/.well-known/openid-configuration"
+     ```
 2. 나머지 `SSO_*` 값을 채우고 `AUTH_MODE=sso`로 백엔드를 띄운다.
    `SSO_ADMIN_ALLOWLIST`에는 일단 본인의 이메일(추정값)을 하나 넣는다.
    `LOG_LEVEL=INFO` 이상으로 해둔다(아래 로그를 보려면 필요).

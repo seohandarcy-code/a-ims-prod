@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from starlette.responses import RedirectResponse
@@ -64,6 +65,7 @@ def test_sso_callback_assigns_admin_role_via_breakglass_allowlist(monkeypatch: p
     로그인할 때마다 admin으로 자동 등록/복구된다(브레이크글래스)."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
     monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
     monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
 
@@ -84,6 +86,7 @@ def test_sso_callback_redirects_to_frontend_base_url_when_set(monkeypatch: pytes
     자기 자신이 아니라 프론트의 실제 도메인으로 돌아가게 한다."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
     monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
     monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
     monkeypatch.setattr("app.api.auth.FRONTEND_BASE_URL", "https://ims.example.com")
@@ -99,11 +102,60 @@ def test_sso_callback_redirects_to_frontend_base_url_when_set(monkeypatch: pytes
     assert r.headers["location"].startswith("https://ims.example.com/#token=")
 
 
+def test_sso_callback_broker_mode_posts_id_token_and_assigns_admin_role(monkeypatch: pytest.MonkeyPatch):
+    """SSO_FLOW_MODE 기본값(implicit_form_post) 경로 — 콜백이 POST로 id_token을
+    form body에 받고, verify_broker_id_token()이 돌려준 클레임으로 이어지는
+    allowed_users/role 판정 로직은 auth_code 모드와 동일하게 공유된다."""
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "implicit_form_post")
+    monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
+    monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
+    monkeypatch.setattr(
+        "app.api.auth.verify_broker_id_token",
+        lambda id_token: {"email": "ims.admin@example.local"},
+    )
+
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/v1/auth/sso/callback",
+            data={"id_token": "fake-id-token"},
+            follow_redirects=False,
+        )
+
+    assert r.status_code == 307
+    assert "role=admin" in r.headers["location"]
+    assert access_store.get_by_sso_id("ims.admin@example.local").is_admin is True
+
+
+def test_sso_callback_broker_mode_invalid_token_rejected(monkeypatch: pytest.MonkeyPatch):
+    """서명 검증 실패(jwt.InvalidTokenError 계열)는 로그인 거부로 처리된다
+    (auth_code 모드의 OAuthError 분기와 동일 원칙)."""
+    monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
+    monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "implicit_form_post")
+
+    def _raise(id_token: str):
+        raise jwt.InvalidTokenError("bad signature")
+
+    monkeypatch.setattr("app.api.auth.verify_broker_id_token", _raise)
+
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/v1/auth/sso/callback",
+            data={"id_token": "fake-id-token"},
+            follow_redirects=False,
+        )
+
+    assert r.status_code == 401
+
+
 def test_sso_callback_assigns_user_role_for_registered_non_admin(monkeypatch: pytest.MonkeyPatch):
     access_store.create("someone-else@example.com", "Someone Else", "TeamX", is_admin=False)
 
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
     monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
     monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
 
@@ -123,6 +175,7 @@ def test_sso_callback_rejects_unregistered_account(monkeypatch: pytest.MonkeyPat
     로그인(세션 발급) 자체가 거부된다 — access_denied로 리다이렉트."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
     monkeypatch.setattr("app.api.auth.SSO_ADMIN_ALLOWLIST", ["ims.admin@example.local"])
     monkeypatch.setattr("app.api.auth.SSO_USER_ID_CLAIM", "email")
 
@@ -142,6 +195,7 @@ def test_sso_callback_silent_failure_redirects_to_sso_required(monkeypatch: pyte
 
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
 
     mock_sso = AsyncMock()
     mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
@@ -163,6 +217,7 @@ def test_sso_callback_non_silent_failure_returns_401(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
 
     mock_sso = AsyncMock()
     mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
@@ -186,6 +241,7 @@ def test_sso_callback_oauth_error_falls_back_to_guest_when_flag_enabled(monkeypa
 
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
     monkeypatch.setattr("app.api.auth.SSO_GUEST_MODE_ON_LOGIN_FAILURE", True)
     monkeypatch.setattr("app.api.deps.AUTH_MODE", "sso")
 
@@ -218,6 +274,7 @@ def test_sso_callback_unregistered_account_falls_back_to_guest_when_flag_enabled
 ):
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
     monkeypatch.setattr("app.api.auth.SSO_GUEST_MODE_ON_LOGIN_FAILURE", True)
     # 빈 allowlist는 "누구나 허용"으로 취급되므로(app/auth/oidc.py의
     # is_allowed_by_claims), 매칭 안 되는 값을 채워 브레이크글래스로 admin
@@ -244,6 +301,7 @@ def test_sso_callback_silent_failures_never_fall_back_to_guest(monkeypatch: pyte
 
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
     monkeypatch.setattr("app.api.auth.SSO_GUEST_MODE_ON_LOGIN_FAILURE", True)
 
     mock_sso = AsyncMock()
@@ -271,6 +329,7 @@ def test_sso_login_silent_network_failure_redirects_with_error_reason(monkeypatc
     로그인 안 됨"과 구분해 에러 배너를 보여줄 수 있게 한다."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
 
     mock_sso = AsyncMock()
     mock_sso.authorize_redirect.side_effect = RuntimeError("discovery unreachable")
@@ -293,6 +352,7 @@ def test_sso_login_non_silent_network_failure_redirects_with_error_reason(monkey
     바디를 읽을 소비자가 없다)."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
 
     mock_sso = AsyncMock()
     mock_sso.authorize_redirect.side_effect = RuntimeError("discovery unreachable")
@@ -314,6 +374,7 @@ def test_sso_callback_non_oauth_failure_redirects_with_error_reason_when_silent(
     sso_error=broker_unreachable도 같이 실어 보낸다."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
 
     mock_sso = AsyncMock()
     mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
@@ -338,6 +399,7 @@ def test_sso_callback_non_oauth_failure_redirects_with_error_reason_when_not_sil
 ):
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
 
     mock_sso = AsyncMock()
     mock_sso.authorize_redirect.return_value = RedirectResponse("http://idp.example/authorize")
@@ -412,6 +474,7 @@ def test_auth_mode_reports_silent_login_disabled_when_flag_off(monkeypatch: pyte
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_ALLOW_LOCAL_LOGIN", False)
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
+    monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "auth_code")
     monkeypatch.setattr("app.api.auth.SSO_SILENT_LOGIN_ENABLED", False)
 
     with TestClient(app) as client:
