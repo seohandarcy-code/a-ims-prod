@@ -522,6 +522,47 @@ Windows/curl은 시스템 인증서 저장소를 써서 통과하지만, Python(
 `SSO_CA_BUNDLE_PATH` 설명과 `docs/db-migration-roadmap.md`의 "PDEP 실연동"
 체크리스트 참고.
 
+### H. 콜백 주소를 자체 서명 인증서로 HTTPS로 만들기
+
+사내 SSO 브로커/ADFS에 처음 연동해보면, `SSO_REDIRECT_URI`가 `http://`면
+브라우저가 "제출하려는 정보가 안전하지 않음"(mixed content)으로 자동 제출을
+막는다 — 브로커 로그인 페이지는 HTTPS인데 콜백 대상이 HTTP라서 생기는
+문제다(실제로 겪음, 2026-10-02). "앱은 HTTP로 개발해도 된다"는 전제 자체는
+맞지만, **브라우저가 최종적으로 접속하는 콜백 주소는 HTTPS여야 한다** — 이건
+브로커가 아니라 그 뒤의 ADFS/브라우저 쪽 요구사항일 가능성이 높다(브로커
+등록 포털이 "HTTP 주소를 입력하라"고 안내하는 것과 모순되지 않는다 — 등록
+자체는 앱의 내부 주소를 식별하는 용도고, 실제로 브라우저가 거기 접속할 때는
+앞단에 HTTPS가 있어야 한다는 뜻).
+
+해결 방법은 두 가지다:
+
+- **ngrok 등 외부 터널**: 설치 없이 빠르지만 로컬 서버가 공인 인터넷에
+  노출된다(사내 보안 정책 확인 필요).
+- **자체 서명 인증서(이 절 — 외부 노출 없음, 이 컴퓨터/사내망 안에서만)**:
+
+```powershell
+scripts\setup-local-https.ps1 -HostIp <방화벽에 열어둔 IP> -TrustLocally
+```
+
+- `-HostIp`: 브라우저가 실제로 접속하는 주소(인증서 SAN에 포함되어야
+  브라우저가 "도메인이 안 맞다"는 별도 경고를 안 띄움).
+- `-TrustLocally`: 이 컴퓨터의 Windows 신뢰 저장소에 인증서를 등록해
+  "연결이 비공개 상태가 아님" 경고 자체가 안 뜨게 한다(관리자 권한 필요).
+  생략하면 경고가 뜨지만 "고급 → 이동(안전하지 않음)"으로 진행 가능.
+
+실행하면 다음에 쓸 `SSO_REDIRECT_URI` 값과 포트를 안내해준다. 그대로:
+
+1. `backend\.env`의 `SSO_REDIRECT_URI`를 안내된 https 주소로 교체
+2. 브로커에 등록된 redirect URI도 **문자 그대로 동일하게** 바꿔달라고 요청
+3. `scripts\stop-dev.ps1` → `scripts\start-dev.ps1`로 완전히 재기동(인증서가
+   있으면 nginx가 HTTPS도 같이 리슨한다 — 인증서가 없으면 지금까지처럼
+   HTTP만 동작하므로 이 기능을 모르는 사람에게는 영향 없음)
+4. 로그인 재시도
+
+인증서 자체는 `nginx/certs/`(gitignore 대상, `nginx/certs/README.md` 참고)에
+생성되고 git에 커밋되지 않는다 — PDEP 등 실제 배포에서는 이 방식 대신 진짜
+인증서(또는 PDEP Ingress의 TLS 종료)를 쓴다.
+
 ## 환경변수와 Secret
 
 이 프로젝트의 환경변수/Secret 전체 카탈로그(무엇이 ConfigMap이고 무엇이 Secret인지,

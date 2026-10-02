@@ -31,10 +31,12 @@ function Get-DevPorts {
     $defaultBackendPort = Get-EnvFileValue "$Root\backend\.env" "PORT" 8000
     $defaultFrontendPort = Get-EnvFileValue "$Root\frontend\.env" "FRONTEND_PORT" 5173
     $defaultNginxPort = Get-EnvFileValue "$Root\nginx\.env" "NGINX_PORT" 8080
+    $defaultNginxHttpsPort = Get-EnvFileValue "$Root\nginx\.env" "NGINX_HTTPS_PORT" 8443
 
     [PSCustomObject]@{
-        BackendPort  = if ($env:BACKEND_PORT) { [int]$env:BACKEND_PORT } else { [int]$defaultBackendPort }
-        VitePort     = if ($env:VITE_PORT) { [int]$env:VITE_PORT } else { [int]$defaultFrontendPort }
-        NginxPort    = if ($env:NGINX_PORT) { [int]$env:NGINX_PORT } else { [int]$defaultNginxPort }
+        BackendPort      = if ($env:BACKEND_PORT) { [int]$env:BACKEND_PORT } else { [int]$defaultBackendPort }
+        VitePort         = if ($env:VITE_PORT) { [int]$env:VITE_PORT } else { [int]$defaultFrontendPort }
+        NginxPort        = if ($env:NGINX_PORT) { [int]$env:NGINX_PORT } else { [int]$defaultNginxPort }
+        NginxHttpsPort   = if ($env:NGINX_HTTPS_PORT) { [int]$env:NGINX_HTTPS_PORT } else { [int]$defaultNginxHttpsPort }
     }
 }
