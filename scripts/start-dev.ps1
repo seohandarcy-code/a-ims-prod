@@ -1,22 +1,20 @@
 param(
     [int]$BackendPort = 0,
     [int]$VitePort = 0,
-    [int]$NginxPort = 0,
-    [int]$NginxHttpsPort = 0
+    [int]$NginxPort = 0
 )
 
 $root = Split-Path -Parent $PSScriptRoot
 
 # 포트 우선순위: 위 -BackendPort 등 명시적 파라미터(0이면 "안 줌") >
 # $env:BACKEND_PORT 등 세션 환경변수 > 각 컴포넌트 .env 파일(backend/.env의
-# PORT, frontend/.env의 FRONTEND_PORT, nginx/.env의 NGINX_PORT/NGINX_HTTPS_PORT)
-# > 하드코딩 기본값(8000/5173/8080/8443). 세부 로직은 _ports.ps1 참고.
+# PORT, frontend/.env의 FRONTEND_PORT, nginx/.env의 NGINX_PORT) > 하드코딩
+# 기본값(8000/5173/8080). 세부 로직은 _ports.ps1 참고.
 . "$PSScriptRoot\_ports.ps1"
 $defaultPorts = Get-DevPorts -Root $root
 if ($BackendPort -eq 0) { $BackendPort = $defaultPorts.BackendPort }
 if ($VitePort -eq 0) { $VitePort = $defaultPorts.VitePort }
 if ($NginxPort -eq 0) { $NginxPort = $defaultPorts.NginxPort }
-if ($NginxHttpsPort -eq 0) { $NginxHttpsPort = $defaultPorts.NginxHttpsPort }
 
 # 창을 숨겨서(-WindowStyle Hidden) 띄우므로, 평소처럼 웹페이지를 쓰면서 로그를
 # 따로 보려면 파일로 남겨야 한다 — stdout/stderr를 합쳐서 하나의 로그 파일에
@@ -56,40 +54,16 @@ if (-not $nginxExe) {
         Replace('__NGINX_PORT__', "$NginxPort").
         Replace('__BACKEND_PORT__', "$BackendPort").
         Replace('__VITE_PORT__', "$VitePort")
-
-    # scripts/setup-local-https.ps1로 인증서를 만들어둔 경우에만 HTTPS
-    # server 블록을 켠다 — 안 만들어뒀으면(지금까지 대부분의 경우) 이 블록
-    # 전체를 들어내서 기존 HTTP-only 동작과 100% 동일하게 유지한다.
-    $certPath = "$root\nginx\certs\dev-selfsigned.crt"
-    $keyPath = "$root\nginx\certs\dev-selfsigned.key"
-    $httpsEnabled = (Test-Path $certPath) -and (Test-Path $keyPath)
-
-    if ($httpsEnabled) {
-        $generated = $generated.
-            Replace('__NGINX_HTTPS_PORT__', "$NginxHttpsPort").
-            Replace('__SSL_CERT_PATH__', $certPath.Replace('\', '/')).
-            Replace('__SSL_KEY_PATH__', $keyPath.Replace('\', '/')).
-            Replace('# __HTTPS_SERVER_BLOCK_START__', '').
-            Replace('# __HTTPS_SERVER_BLOCK_END__', '')
-    } else {
-        $generated = $generated -replace '(?s)# __HTTPS_SERVER_BLOCK_START__.*?# __HTTPS_SERVER_BLOCK_END__\r?\n', ''
-    }
-
     Set-Content -Path "$root\nginx\nginx.generated.conf" -Value $generated -Encoding Ascii
 
     Write-Host "Starting nginx reverse proxy on http://127.0.0.1:$NginxPort ..."
-    if ($httpsEnabled) {
-        Write-Host "  + HTTPS(자체 서명 인증서) on https://127.0.0.1:$NginxHttpsPort ..."
-    }
     Start-Process -FilePath $nginxExe -ArgumentList "-p", "$root\nginx\", "-c", "nginx.generated.conf" -WindowStyle Hidden
 }
 
 Start-Sleep -Seconds 2
 Write-Host ""
 Write-Host "=== Status ==="
-$portsToCheck = @($BackendPort, $VitePort, $NginxPort)
-if ($httpsEnabled) { $portsToCheck += $NginxHttpsPort }
-foreach ($port in $portsToCheck) {
+foreach ($port in $BackendPort, $VitePort, $NginxPort) {
     $listening = [bool](Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue)
     Write-Host "port $port : $(if ($listening) { 'UP' } else { 'DOWN' })"
 }

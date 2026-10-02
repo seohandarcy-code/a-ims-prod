@@ -17,8 +17,6 @@ nginx/logs/
 nginx/temp/
 nginx/nginx.generated.conf
 nginx/.env
-nginx/certs/*
-!nginx/certs/README.md
 legacy/.venv/
 legacy/__pycache__/
 legacy/**/__pycache__/
