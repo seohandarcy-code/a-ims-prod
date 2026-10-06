@@ -452,6 +452,73 @@ SSL 인증서 문제(`SSO_CA_BUNDLE_PATH`)를 해결한 뒤에도 `.well-known/o
   추가했다 — 둘 다 모듈 레벨 등록 블록과 독립적인 순수 함수/분기라 기존에
   겪은 `importlib.reload` cross-module 바인딩 함정과 무관하다.
 
+### redirect_uri HTTP/HTTPS 문제와 "브로커 없이 ADFS 직접 연결" 경로 확정 (완료, 2026-10-06)
+
+`SSO_FLOW_MODE=implicit_form_post`(브로커 경유)로 실제 연동을 시도하면서
+세 가지를 더 겪고 정리했다.
+
+**1) redirect_uri가 HTTP면 브라우저가 콜백 자동 제출을 막는다.** 브로커
+로그인 페이지는 HTTPS인데 `SSO_REDIRECT_URI`가 `http://<방화벽 IP>:<포트>`라서,
+Chrome이 "제출하려는 정보가 안전하지 않음"(mixed content)으로 자동 제출을
+막았다. "HTTP로 개발 중인 웹을 위한 브로커"라는 설명과 모순되지 않는다 —
+앱 내부는 HTTP로 둬도 되지만, 브라우저가 최종 접속하는 콜백 주소는 (브로커든
+그 뒤의 ADFS든) HTTPS를 요구하는 것으로 보인다.
+
+- **시도 1(기각)**: 브로커가 HTTP URL 등록 시 발급해주는 HTTPS "entry
+  URL"(`<브로커>/<서비스>`)을 콜백 주소로 써보려 했다 — 브로커 포털이
+  명시적으로 "HTTP 주소를 입력하라"고 안내하는 것으로 확인돼 기각.
+  (`redirect_uri_mismatch` 에러로 등록값과 다르다는 것까지만 확인, entry
+  URL이 하위 경로를 실제로 중계해주는지는 검증 못 함.)
+- **시도 2(구현 후 되돌림)**: 로컬 nginx에 자체 서명 인증서로 HTTPS를 붙이는
+  `scripts/setup-local-https.ps1`을 만들어 커밋(`1ddf2d4`)했으나, 사용자가
+  별도로 정식 HTTPS 콜백 주소를 이미 준비해둔 상태였음이 확인돼 바로 되돌림
+  (`3f99fca`, `git revert`). 코드 자체(조건부 HTTPS nginx 블록, 인증서 없으면
+  100% 기존 HTTP-only 동작)는 이 컴퓨터에서 생성/기동/HTTP-only 폴백 전부
+  직접 검증까지 마쳤었다 — 나중에 비슷한 상황(공인 HTTPS 주소를 못 구하는
+  환경)이 생기면 이 커밋 히스토리에서 그대로 복원해 쓸 수 있다.
+
+**2) "브로커 엔트리 URL = 콜백 주소"라는 가설도 레퍼런스를 다시 보고 기각했다.**
+레퍼런스의 `build_sso_url`을 보면 브로커 경유(`if BROKER_URL`) 분기와 직접
+ADFS 연결(`else`) 분기가 **완전히 분리**돼 있고, 브로커 분기는 `SERVICE_ID`를
+URL 경로가 아니라 `client_id` 쿼리 파라미터로만 쓴다 — "엔트리 URL이 곧 우리
+앱의 외부 주소"라는 가설이 성립하려면 근거가 더 필요했는데, 브로커 포털
+자체가 "HTTP 주소(우리 서버 주소 그대로)를 입력하라"고 안내하는 걸 보고
+최종적으로 기각했다.
+
+**3) 그래서 "브로커 없이 ADFS 직접 연결"을 실제로 확인했다 — 그리고 새 코드가
+필요 없다는 걸 알아냈다.** 레퍼런스의 `else` 분기가 가리키는 실제 ADFS
+주소(`https://<도메인>/adfs/oauth2/authorize/`)를 찾았고, 사용자가 이미
+ADFS에 별도 등록된 `client_id`/`client_secret`과 준비해둔 HTTPS 콜백 주소를
+갖고 있어서 바로 검증 가능했다:
+
+```powershell
+curl "https://<ADFS 도메인>/adfs/.well-known/openid-configuration"
+```
+
+**200 OK + `authorization_endpoint`/`token_endpoint`/`jwks_uri`가 전부 포함된
+정상 discovery 문서로 확인됐다.** ADFS는 Microsoft의 표준 OIDC 구현이라
+discovery를 지원하는 반면, 자체 브로커는 지원하지 않았던 것 — 이 차이가
+핵심이었다. 그 결과:
+
+- **새 코드가 전혀 필요 없다** — 이미 만들어둔 `SSO_FLOW_MODE=auth_code`
+  (discovery 기반 authlib, 원래 로컬 Keycloak 검증용으로 설계)를 그대로
+  재사용한다. `.env`만 다음과 같이 채우면 된다:
+  ```
+  SSO_FLOW_MODE=auth_code
+  SSO_ISSUER_URL=https://<ADFS 도메인>/adfs
+  SSO_CLIENT_ID=<ADFS 등록 client_id>
+  SSO_CLIENT_SECRET=<ADFS 등록 client_secret>
+  SSO_REDIRECT_URI=<준비해둔 https 콜백 주소>/api/v1/auth/sso/callback
+  ```
+- `auth_code`를 "로컬 Keycloak 전용, 실제 운영 대상 아님"으로 문서화했던
+  이전 표현은 **정정**한다 — 지금은 "discovery 기반 IdP(로컬 Keycloak이든,
+  브로커 없이 직접 연결하는 ADFS든)는 `auth_code`, discovery 미지원 자체
+  브로커는 `implicit_form_post`"가 선택 기준이다. 둘 다 실제 운영에서
+  쓰일 수 있는 경로다. `backend/app/config.py`의 `SSO_FLOW_MODE` 주석,
+  `docs/ENV_AND_SECRETS.md`, `backend/.env.example`에 전부 반영.
+- 아직 실제 로그인 성공까지(콜백 수신, 클레임 추출, `allowed_users` 대조)는
+  검증 전이다 — 다음 단계에서 이어서 확인 필요.
+
 ### PDEP 실연동 (예정, 착수 전 확인/검토할 것)
 
 - 사내 SSO 연동이 실제로 필수/권장인지, 프로토콜이 정말 OIDC인지(SAML 등 다른

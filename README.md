@@ -372,7 +372,7 @@ cd backend
 | 변수 | 로컬 Keycloak 테스트 때 | 실제 배포에서 |
 |---|---|---|
 | `AUTH_MODE`(A) | `sso` | `sso` |
-| `SSO_FLOW_MODE`(A) | **`auth_code`로 명시 필요**(로컬 Keycloak은 discovery 기반) | 기본값(`implicit_form_post`) 그대로 두면 됨 — 생략 가능 |
+| `SSO_FLOW_MODE`(A) | **`auth_code`로 명시 필요**(로컬 Keycloak은 discovery 기반) | 브로커 경유면 기본값(`implicit_form_post`) 그대로 — 생략 가능. **브로커 없이 ADFS에 직접 연결**한다면 여기도 `auth_code`(ADFS가 표준 discovery를 지원하는 걸 실제 확인함, 2026-10-06) |
 | `SSO_ISSUER_URL`(B) | `http://127.0.0.1:8180/realms/ims`(discovery 기준 URL) | **서비스 경로 없는 브로커 도메인만**(예: `https://sso-broker.company.com`) — `{값}/oidc/form-authorize`, `{값}/oidc/jwks`로 쓰임 |
 | `SSO_REDIRECT_URI`(B) | `http://127.0.0.1:8080/api/v1/auth/sso/callback` | 실제 배포 도메인의 콜백 경로(`https://<도메인>/api/v1/auth/sso/callback`) — **브로커에 등록하는 값과 문자 그대로 일치**해야 함(http/https, 트레일링 슬래시, 포트까지) |
 | `SSO_CLIENT_ID`(B) | Keycloak에서 직접 발급 | 브로커가 발급한 서비스 식별자(`/oidc/form-authorize?client_id=...`로 쓰임) |
@@ -402,7 +402,9 @@ cd backend
 - 사내망 방화벽에서 새 서버가 브로커의 `/oidc/form-authorize`,
   `/oidc/jwks`(또는 실제로 쓰이는 경로)에 도달 가능한지
 
-**`SSO_FLOW_MODE=auth_code`(로컬 Keycloak류 범용 OIDC IdP)인 경우**:
+**`SSO_FLOW_MODE=auth_code`(로컬 Keycloak류 범용 OIDC IdP, 또는 브로커 없이
+ADFS에 직접 연결하는 경우 — ADFS는 표준 OIDC discovery를 지원하므로 이 모드를
+그대로 쓴다)**:
 - Confidential 클라이언트 등록 + `client_id`/`client_secret` 발급
 - Redirect URI 사전 등록(위 `SSO_REDIRECT_URI`와 정확히 일치)
 - `openid email profile` scope 허용 여부(`backend/app/auth/oidc.py`가 요청하는
@@ -429,10 +431,15 @@ cd backend
      curl "<SSO_ISSUER_URL>/oidc/jwks"
      ```
      (경로가 다른 브로커면 브로커 문서/예시 코드에서 실제 경로 확인 — `D`번 참고)
-   - `SSO_FLOW_MODE=auth_code`(로컬 Keycloak류)면 discovery로 확인한다:
+   - `SSO_FLOW_MODE=auth_code`(로컬 Keycloak류, 또는 브로커 없이 ADFS 직접
+     연결)면 discovery로 확인한다:
      ```powershell
      curl "<SSO_ISSUER_URL>/.well-known/openid-configuration"
      ```
+     ADFS 직접 연결이라면 `SSO_ISSUER_URL=https://<ADFS 도메인>/adfs`이므로
+     실제로는 `https://<ADFS 도메인>/adfs/.well-known/openid-configuration`을
+     확인하는 것과 같다 — 실제로 `authorization_endpoint`/`token_endpoint`/
+     `jwks_uri`가 포함된 정상 응답을 받는 걸 확인했다(2026-10-06).
 2. 나머지 `SSO_*` 값을 채우고 `AUTH_MODE=sso`로 백엔드를 띄운다.
    `SSO_ADMIN_ALLOWLIST`에는 일단 본인의 이메일(추정값)을 하나 넣는다.
    `LOG_LEVEL=INFO` 이상으로 해둔다(아래 로그를 보려면 필요).

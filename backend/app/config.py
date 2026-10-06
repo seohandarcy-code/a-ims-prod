@@ -78,14 +78,24 @@ ADMIN_BOOTSTRAP_PASSWORD = os.getenv("ADMIN_BOOTSTRAP_PASSWORD", "").strip() or 
 AUTH_MODE = os.getenv("AUTH_MODE", "local").strip().lower() or "local"
 
 # 2026-10-02: 실제 사내 브로커 연동 결과, 로컬 Keycloak 검증 때 설계한
-# discovery 기반(authlib, authorization code flow)과 실제 브로커가 쓰는 방식이
+# discovery 기반(authlib, authorization code flow)과 "브로커 경유" 연동 방식이
 # 근본적으로 다르다는 게 확인됐다 — 브로커는 discovery 자체를 지원하지 않고,
 # `{SSO_ISSUER_URL}/oidc/form-authorize`로 인가 요청을 보내면 `/sso/callback`에
 # id_token을 POST(form_post)로 바로 돌려준다(교환용 token 엔드포인트 없음),
-# `{SSO_ISSUER_URL}/oidc/jwks`로 서명을 검증한다. 이게 실제 운영 대상이라
-# 기본값으로 두고, 로컬 Keycloak(discovery 기반)은 `auth_code`로 명시해야만
-# 쓰는 개발 편의용 대체 수단으로 격하했다. app/auth/oidc.py의
-# build_broker_authorize_url()/verify_broker_id_token() 참고.
+# `{SSO_ISSUER_URL}/oidc/jwks`로 서명을 검증한다. app/auth/oidc.py의
+# build_broker_authorize_url()/verify_broker_id_token() 참고. 이게 실제
+# 운영 대상(브로커 경유)이라 기본값으로 둔다.
+#
+# 2026-10-06: `auth_code`를 "로컬 Keycloak 전용"으로만 격하했던 건 정정한다 —
+# 실제 ADFS에 **브로커를 거치지 않고 직접** 연결할 때도 `auth_code`를 그대로
+# 쓴다. ADFS는 Microsoft의 표준 OIDC 구현이라 `{ADFS}/adfs/.well-known/openid-configuration`
+# discovery를 지원하는 게 실제로 확인됐다(authorization_endpoint/token_endpoint/
+# jwks_uri 전부 응답) — 그래서 직접 ADFS 연결은 새 코드 없이 기존
+# discovery 기반 authlib 경로(`SSO_ISSUER_URL={ADFS}/adfs` + ADFS에 등록된
+# client_id/secret)만으로 동작한다. 즉 지금은 두 가지 "실제 운영" 경로가
+# 공존한다: `implicit_form_post`(기본값, 브로커 경유) / `auth_code`(로컬
+# Keycloak **또는** 브로커 없이 ADFS 직접 연결). docs/db-migration-roadmap.md
+# 4단계의 해당 날짜 항목 참고.
 SSO_FLOW_MODE = os.getenv("SSO_FLOW_MODE", "implicit_form_post").strip().lower() or "implicit_form_post"
 
 SSO_ISSUER_URL = os.getenv("SSO_ISSUER_URL", "").strip()
