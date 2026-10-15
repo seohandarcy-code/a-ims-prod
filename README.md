@@ -251,7 +251,7 @@ Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:8180/admin/realms/ims/users
 
 ```
 AUTH_MODE=sso
-SSO_FLOW_MODE=auth_code   # 기본값(implicit_form_post)은 실제 사내 브로커용 — 로컬 Keycloak은 discovery 기반이라 이 값이 필수
+SSO_FLOW_MODE=auth_code   # 2026-10-13부터 기본값(생략해도 됨) — 로컬 Keycloak은 discovery 기반이라 이 값이 필요. 브로커 경유는 implicit_form_post를 명시해야 함
 SSO_ISSUER_URL=http://127.0.0.1:8180/realms/ims
 SSO_CLIENT_ID=ims-backend
 SSO_CLIENT_SECRET=<위 client-secret 조회 결과>
@@ -372,11 +372,11 @@ cd backend
 | 변수 | 로컬 Keycloak 테스트 때 | 실제 배포에서 |
 |---|---|---|
 | `AUTH_MODE`(A) | `sso` | `sso` |
-| `SSO_FLOW_MODE`(A) | **`auth_code`로 명시 필요**(로컬 Keycloak은 discovery 기반) | 브로커 경유면 기본값(`implicit_form_post`) 그대로 — 생략 가능. **브로커 없이 ADFS에 직접 연결**한다면 여기도 `auth_code`(ADFS가 표준 discovery를 지원하는 걸 실제 확인함, 2026-10-06) |
+| `SSO_FLOW_MODE`(A) | `auth_code`(2026-10-13부터 기본값, 생략 가능 — 로컬 Keycloak은 discovery 기반) | **브로커 없이 ADFS에 직접 연결**한다면 기본값 `auth_code` 그대로(ADFS가 표준 discovery를 지원하는 걸 실제 확인함, 2026-10-06). **브로커 경유**가 필요하면 `implicit_form_post`를 명시해야 함(더 이상 기본값 아님) |
 | `SSO_ISSUER_URL`(B) | `http://127.0.0.1:8180/realms/ims`(discovery 기준 URL) | **서비스 경로 없는 브로커 도메인만**(예: `https://sso-broker.company.com`) — `{값}/oidc/form-authorize`, `{값}/oidc/jwks`로 쓰임 |
 | `SSO_REDIRECT_URI`(B) | `http://127.0.0.1:8080/api/v1/auth/sso/callback` | 실제 배포 도메인의 콜백 경로(`https://<도메인>/api/v1/auth/sso/callback`) — **브로커에 등록하는 값과 문자 그대로 일치**해야 함(http/https, 트레일링 슬래시, 포트까지) |
 | `SSO_CLIENT_ID`(B) | Keycloak에서 직접 발급 | 브로커가 발급한 서비스 식별자(`/oidc/form-authorize?client_id=...`로 쓰임) |
-| `SSO_CLIENT_SECRET`(B) | Keycloak에서 직접 발급 | **기본 모드(`implicit_form_post`)에서는 아예 안 씀** — 토큰 교환 단계 자체가 없음 |
+| `SSO_CLIENT_SECRET`(B) | Keycloak에서 직접 발급 | **브로커 모드(`implicit_form_post`)에서는 아예 안 씀** — 토큰 교환 단계 자체가 없음 |
 | `SSO_ADMIN_ALLOWLIST`(C) | `ims.admin@example.local` | **본인의 실제 식별자**(아래 D, E 참고 — 브로커가 뭘 보내는지 확인 전엔 추측값으로 시작) |
 | `SSO_USER_ID_CLAIM`(C) | `email`(Keycloak 기본) | 브로커가 실제로 쓰는 클레임 이름(모르면 일단 `email`로 시작 후 E번 절차로 교정) |
 | `DATABASE_URL`(D) | 로컬 PostgreSQL | 새 서버의 실제 DB 접속 정보 |
@@ -393,7 +393,7 @@ cd backend
 
 ### D. 브로커 관리자에게 미리 요청해둘 것
 
-**`SSO_FLOW_MODE=implicit_form_post`(기본값, 실제 사내 브로커)인 경우**:
+**`SSO_FLOW_MODE=implicit_form_post`(2026-10-13부터 기본값 아님, 명시 설정 필요 — 실제 사내 브로커)인 경우**:
 - 서비스 등록 + 서비스 식별자(`client_id`로 쓰임) 발급 — client_secret은
   필요 없다(토큰 교환 단계 자체가 없는 구조, 아래 "SSO 로그인" 절 참고)
 - Redirect URI 사전 등록(위 `SSO_REDIRECT_URI`와 정확히 일치)
@@ -425,7 +425,7 @@ ADFS에 직접 연결하는 경우 — ADFS는 표준 OIDC discovery를 지원�
 
 1. `SSO_ISSUER_URL`부터 채우고 브로커에 실제로 도달하는지 먼저 확인한다 —
    이게 안 되면 나머지는 다 소용없다(네트워크/URL부터 의심).
-   - `SSO_FLOW_MODE=implicit_form_post`(기본값)면 discovery가 없으므로
+   - `SSO_FLOW_MODE=implicit_form_post`(명시 설정 시)면 discovery가 없으므로
      JWKS 엔드포인트로 확인한다:
      ```powershell
      curl "<SSO_ISSUER_URL>/oidc/jwks"

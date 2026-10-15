@@ -519,6 +519,47 @@ discovery를 지원하는 반면, 자체 브로커는 지원하지 않았던 것
 - 아직 실제 로그인 성공까지(콜백 수신, 클레임 추출, `allowed_users` 대조)는
   검증 전이다 — 다음 단계에서 이어서 확인 필요.
 
+### `SSO_FLOW_MODE` 기본값을 `auth_code`로 되돌림 — env var 전달 문제가 로컬에서도 재현됨 (완료, 2026-10-13)
+
+PDEP ConfigMap에 `SSO_FLOW_MODE=auth_code`를 넣어도 실제 파드가 여전히
+`implicit_form_post`(기본값)로 동작하는 원인 불명 문제(위 "PDEP 실연동" 절
+참고 — ConfigMap 값 자체도, Deployment의 `envFrom`/리터럴 `env:`도 둘 다
+정상임을 확인했지만 원인 미발견)를 조사하던 중, **같은 증상이 로컬 환경에서도
+재현됨**을 확인했다 — 로컬에서 `auth_code` 모드로 실제 ADFS에 직접 붙는
+테스트를 했는데, 브라우저 주소가 discovery 기반 authlib이 만드는 ADFS의 진짜
+`authorization_endpoint`(`/adfs/oauth2/authorize`)가 아니라
+`{SSO_ISSUER_URL}/oidc/form-authorize`(브로커 전용 분기
+`build_broker_authorize_url()`이 하드코딩하는 경로, `backend/app/auth/oidc.py`)로
+나갔다. 이 경로는 인증서버가 돌려준 에러 주소가 아니라 100% 우리 코드가
+조립한 요청 URL이므로, "인증서버를 브로커처럼 설정해야 하나"가 아니라
+**`SSO_FLOW_MODE`가 여전히 `auth_code`로 안 읽히고 있다는 뜻** — PDEP과 완전히
+동일한 증상이 K8s와 무관한 환경에서도 나온 것이다. (유력 용의자로
+`backend/app/config.py`의 `load_dotenv()`가 `override=True` 없이 호출돼
+있다는 점을 지목했다 — OS 환경변수에 `SSO_FLOW_MODE`가 이미 설정돼 있으면
+`.env`의 값을 조용히 무시하는 동작, PDEP 조사 때 이미 실험으로 검증해둔
+동작과 동일하다. 다만 이번 세션에서 실제 원인으로 확정하지는 않았다.)
+
+이 발견으로 "PDEP 플랫폼에만 특정된 문제"라는 전제가 깨졌고, env var 전달이
+또 실패하더라도 더 안전한 경로로 떨어지도록 **기본값 자체를 뒤집기로
+결정했다**: `SSO_FLOW_MODE`의 기본값을 `implicit_form_post` → `auth_code`로
+변경(`backend/app/config.py`). 지금 당장의 운영 목표가 브로커 경유가 아니라
+ADFS 직접 연결이기 때문 — env var가 어떤 이유로든 안 읽혀도 최소한 올바른
+경로로 떨어지게 한다.
+
+**영향**: `SSO_FLOW_MODE`를 명시적으로 설정하지 않는 모든 배포는 이제
+`auth_code`로 동작한다. **브로커 경유(`implicit_form_post`) 배포가 필요한
+환경에서는 반드시 `SSO_FLOW_MODE=implicit_form_post`를 명시적으로 설정해야
+한다** — 더 이상 "아무것도 안 하면 브로커 모드"가 아니다. 테스트
+(`backend/tests/test_roles.py`)는 전부 `monkeypatch`로 모드를 명시적으로
+지정하고 있어 영향 없음(112개 전부 통과 확인). `backend/.env.example`,
+`docs/ENV_AND_SECRETS.md`, `README.md`의 "기본값" 표기를 전부 갱신했다.
+
+**아직 미해결**: `python-dotenv`의 `override=False` 가설을 포함해, 로컬에서
+왜 env var가 실제로 반영 안 됐는지 근본 원인은 이번에 직접 재현/확정하지
+못했다 — 다음에 이어서 로컬 PowerShell 세션의 `$env:SSO_FLOW_MODE` 잔존 여부부터
+확인할 것. PDEP의 ConfigMap↔Deployment 배선 문제도 여전히 별개로 미해결이다
+(기본값을 뒤집은 것은 "안전망"이지 원인 해결이 아니다).
+
 ### PDEP 실연동 (예정, 착수 전 확인/검토할 것)
 
 - 사내 SSO 연동이 실제로 필수/권장인지, 프로토콜이 정말 OIDC인지(SAML 등 다른

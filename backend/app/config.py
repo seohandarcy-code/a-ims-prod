@@ -83,8 +83,8 @@ AUTH_MODE = os.getenv("AUTH_MODE", "local").strip().lower() or "local"
 # `{SSO_ISSUER_URL}/oidc/form-authorize`로 인가 요청을 보내면 `/sso/callback`에
 # id_token을 POST(form_post)로 바로 돌려준다(교환용 token 엔드포인트 없음),
 # `{SSO_ISSUER_URL}/oidc/jwks`로 서명을 검증한다. app/auth/oidc.py의
-# build_broker_authorize_url()/verify_broker_id_token() 참고. 이게 실제
-# 운영 대상(브로커 경유)이라 기본값으로 둔다.
+# build_broker_authorize_url()/verify_broker_id_token() 참고. (당시엔 이게
+# 실제 운영 대상이라 기본값으로 뒀었다 — 2026-10-13에 뒤집힘, 아래 참고.)
 #
 # 2026-10-06: `auth_code`를 "로컬 Keycloak 전용"으로만 격하했던 건 정정한다 —
 # 실제 ADFS에 **브로커를 거치지 않고 직접** 연결할 때도 `auth_code`를 그대로
@@ -93,10 +93,20 @@ AUTH_MODE = os.getenv("AUTH_MODE", "local").strip().lower() or "local"
 # jwks_uri 전부 응답) — 그래서 직접 ADFS 연결은 새 코드 없이 기존
 # discovery 기반 authlib 경로(`SSO_ISSUER_URL={ADFS}/adfs` + ADFS에 등록된
 # client_id/secret)만으로 동작한다. 즉 지금은 두 가지 "실제 운영" 경로가
-# 공존한다: `implicit_form_post`(기본값, 브로커 경유) / `auth_code`(로컬
-# Keycloak **또는** 브로커 없이 ADFS 직접 연결). docs/db-migration-roadmap.md
-# 4단계의 해당 날짜 항목 참고.
-SSO_FLOW_MODE = os.getenv("SSO_FLOW_MODE", "implicit_form_post").strip().lower() or "implicit_form_post"
+# 공존한다: `implicit_form_post`(브로커 경유) / `auth_code`(로컬
+# Keycloak **또는** 브로커 없이 ADFS 직접 연결).
+#
+# 2026-10-13: 기본값을 `implicit_form_post` → `auth_code`로 뒤집는다. PDEP
+# ConfigMap에 `SSO_FLOW_MODE=auth_code`를 넣어도 실제 파드에서 반영이
+# 안 되는 원인 불명 문제를 조사하다가, 같은 증상이 로컬에서도 재현됨을
+# 확인했다(env var가 어떤 경로로든 "안 읽히면" 전부 이 기본값으로 떨어짐).
+# 지금 당장의 운영 목표가 브로커 경유가 아니라 ADFS 직접 연결이므로, env var
+# 전달이 또 실패하더라도 최소한 올바른 경로(auth_code)로 떨어지게 해둔다.
+# **주의**: 브로커 경유(`implicit_form_post`) 배포가 필요한 환경에서는 이제
+# `SSO_FLOW_MODE=implicit_form_post`를 반드시 명시적으로 설정해야 한다 —
+# 더 이상 "아무것도 안 하면 브로커 모드"가 아니다. 경위는
+# docs/db-migration-roadmap.md 4단계의 해당 날짜 항목 참고.
+SSO_FLOW_MODE = os.getenv("SSO_FLOW_MODE", "auth_code").strip().lower() or "auth_code"
 
 SSO_ISSUER_URL = os.getenv("SSO_ISSUER_URL", "").strip()
 SSO_CLIENT_ID = os.getenv("SSO_CLIENT_ID", "").strip()

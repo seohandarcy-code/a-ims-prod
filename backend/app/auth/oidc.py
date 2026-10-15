@@ -99,7 +99,8 @@ def is_allowed_by_claims(claims: dict, allowlist: list[str], claim_name: str) ->
     return str(claims.get(claim_name, "")) in allowlist
 
 
-# --- SSO_FLOW_MODE=implicit_form_post(기본값) 전용 — 실제 사내 브로커 연동 ---
+# --- SSO_FLOW_MODE=implicit_form_post(2026-10-13부터 기본값 아님, 명시적 설정 필요)
+# 전용 — 실제 사내 브로커 연동 ---
 #
 # 이 브로커는 discovery(.well-known/openid-configuration) 자체를 지원하지
 # 않는다(여러 경로 조합으로 확인함 — 전부 404, /oidc/jwks만 직접 존재). 브로커가

@@ -103,9 +103,10 @@ def test_sso_callback_redirects_to_frontend_base_url_when_set(monkeypatch: pytes
 
 
 def test_sso_callback_broker_mode_posts_id_token_and_assigns_admin_role(monkeypatch: pytest.MonkeyPatch):
-    """SSO_FLOW_MODE 기본값(implicit_form_post) 경로 — 콜백이 POST로 id_token을
-    form body에 받고, verify_broker_id_token()이 돌려준 클레임으로 이어지는
-    allowed_users/role 판정 로직은 auth_code 모드와 동일하게 공유된다."""
+    """SSO_FLOW_MODE=implicit_form_post(브로커 경유, 2026-10-13부터는 기본값 아님
+    — 명시적으로 설정해야 함) 경로 — 콜백이 POST로 id_token을 form body에 받고,
+    verify_broker_id_token()이 돌려준 클레임으로 이어지는 allowed_users/role
+    판정 로직은 auth_code 모드와 동일하게 공유된다."""
     monkeypatch.setattr("app.api.auth.AUTH_MODE", "sso")
     monkeypatch.setattr("app.api.auth.SSO_BROKER_CONFIGURED", True)
     monkeypatch.setattr("app.api.auth.SSO_FLOW_MODE", "implicit_form_post")
