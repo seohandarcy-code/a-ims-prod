@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import urllib.parse
@@ -8,6 +9,43 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+
+def _getenv(name: str, default: str = "") -> str:
+    """os.getenv(name, default)와 동일하되, 그 이름의 환경변수가 process에
+    이미 존재하면서(빈 문자열이어도 "존재"로 침) 공백/빈 문자열이면 경고
+    로그를 남긴다.
+
+    load_dotenv()는 override=False라 OS 프로세스 환경에 같은 이름의 변수가
+    이미 있으면(설사 빈 문자열이어도) .env 파일 값을 조용히 무시한다 —
+    2026-10-13에 SSO_FLOW_MODE에서 실제로 겪은 문제(.env를 며칠간 고쳐도
+    반영된 것처럼 안 보임, 원인은 PowerShell 세션에 같은 이름의 빈 환경변수가
+    이미 떠 있었던 것으로 추정). 이 경고가 보이면 PowerShell에서
+    `Test-Path Env:<이름>`으로 먼저 확인하고 `Remove-Item Env:<이름>`으로
+    지운 뒤 재기동해볼 것. docs/db-migration-roadmap.md 4단계의 2026-10-13
+    항목 참고.
+
+    **일부러 모든 os.getenv() 호출에 다 쓰지 않는다** — DATABASE_URL/DB_HOST/
+    DATA_DIR/CORS_ORIGINS처럼 "비어있음(미설정)"이 설치 대부분에서 정상적인
+    기본 상태인 변수에 적용하면, 평범한 최초 구동에서도 매번 경고가 떠서
+    오히려 신호 대비 잡음이 된다. 대신 AUTH_MODE/SSO_FLOW_MODE/
+    SSO_USER_ID_CLAIM/ADMIN_BOOTSTRAP_PASSWORD처럼 "모드·자격 선택값이라
+    명시적으로 다른 값을 기대하는 게 흔한" 변수에만 선택적으로 쓴다.
+    """
+    raw = os.environ.get(name)
+    if raw is not None and raw.strip() == "":
+        logger.warning(
+            "%s 환경변수가 process에 존재하지만 빈 문자열입니다 — .env 파일 값이 "
+            "override=False 때문에 무시되고 있을 수 있습니다. PowerShell에서 "
+            "Test-Path Env:%s 로 확인, Remove-Item Env:%s 로 제거 후 재기동하세요.",
+            name,
+            name,
+            name,
+        )
+    return os.getenv(name, default)
+
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BACKEND_DIR / os.getenv("DATA_DIR", "data")
@@ -44,6 +82,10 @@ CUSTOM_COLUMN_TYPES_FILE = DATA_REV_DIR / "custom_column_types.json"
 #   3) 둘 다 없으면 SQLite(fresh clone 기본값)로 폴백한다.
 # docs/db-migration-roadmap.md, docs/ENV_AND_SECRETS.md, README.md "환경변수/Secret" 절 참고.
 def _build_database_url() -> str:
+    # DATABASE_URL/DB_HOST가 비어있는 건 SQLite 폴백(fresh clone 기본값)으로
+    # 완전히 정상적인 상태라 _getenv()의 "존재하지만 빈 문자열" 경고 대상에서
+    # 뺀다(아래 AUTH_MODE/SSO_FLOW_MODE 등과 달리, 여기는 "비어있음 자체가
+    # 널리 쓰이는 정상 상태").
     database_url = os.getenv("DATABASE_URL", "").strip()
     if database_url:
         return database_url
@@ -65,7 +107,7 @@ DATABASE_URL = _build_database_url()
 # 비워두면 로컬 개발 편의를 위해 기존 기본값("0000")을 그대로 쓴다. 여러 서버에 배포할
 # 때 전부 같은 잘 알려진 기본 비밀번호를 공유하지 않도록, 환경마다 Secret으로 다르게
 # 주입할 수 있게 했다.
-ADMIN_BOOTSTRAP_PASSWORD = os.getenv("ADMIN_BOOTSTRAP_PASSWORD", "").strip() or "0000"
+ADMIN_BOOTSTRAP_PASSWORD = _getenv("ADMIN_BOOTSTRAP_PASSWORD").strip() or "0000"
 
 # 2026-09-18: SSO 연동(4단계) — 로그인 "수단"만 local(비밀번호) <-> sso(OIDC)로
 # 바꾼다. 세션 발급/검증(app/auth/state.py의 AdminAuthStore._sessions)은 두 모드가
@@ -75,7 +117,7 @@ ADMIN_BOOTSTRAP_PASSWORD = os.getenv("ADMIN_BOOTSTRAP_PASSWORD", "").strip() or 
 # 성공하면 여전히 "admin" 역할 하나만 존재한다.
 # docs/db-migration-roadmap.md 4단계, docs/ENV_AND_SECRETS.md, README.md
 # "SSO로 전환해서 로그인 검증하기" 절 참고.
-AUTH_MODE = os.getenv("AUTH_MODE", "local").strip().lower() or "local"
+AUTH_MODE = _getenv("AUTH_MODE", "local").strip().lower() or "local"
 
 # 2026-10-02: 실제 사내 브로커 연동 결과, 로컬 Keycloak 검증 때 설계한
 # discovery 기반(authlib, authorization code flow)과 "브로커 경유" 연동 방식이
@@ -106,7 +148,7 @@ AUTH_MODE = os.getenv("AUTH_MODE", "local").strip().lower() or "local"
 # `SSO_FLOW_MODE=implicit_form_post`를 반드시 명시적으로 설정해야 한다 —
 # 더 이상 "아무것도 안 하면 브로커 모드"가 아니다. 경위는
 # docs/db-migration-roadmap.md 4단계의 해당 날짜 항목 참고.
-SSO_FLOW_MODE = os.getenv("SSO_FLOW_MODE", "auth_code").strip().lower() or "auth_code"
+SSO_FLOW_MODE = _getenv("SSO_FLOW_MODE", "auth_code").strip().lower() or "auth_code"
 
 SSO_ISSUER_URL = os.getenv("SSO_ISSUER_URL", "").strip()
 SSO_CLIENT_ID = os.getenv("SSO_CLIENT_ID", "").strip()
@@ -136,7 +178,7 @@ SSO_ADMIN_ALLOWLIST = [
 # allowed_users.sso_id 및 위 브레이크글래스 목록과 대조할 클레임 이름. 표준 OIDC
 # 클레임이 아니라 IdP(사내 SSO)마다 다르므로 실제 배포 전 IT팀에 확인 필요 —
 # 사번/UPN 등 안정적인 고유 식별자를 쓰는 클레임으로 맞춘다.
-SSO_USER_ID_CLAIM = os.getenv("SSO_USER_ID_CLAIM", "").strip() or "email"
+SSO_USER_ID_CLAIM = _getenv("SSO_USER_ID_CLAIM").strip() or "email"
 
 # AUTH_MODE=sso에서도 기존 로컬 비밀번호 로그인(/login)을 부트스트랩용으로 같이
 # 열어둔다 — 브로커가 SSO_CLIENT_ID를 아직 발급하지 않아 실제 SSO 로그인이
